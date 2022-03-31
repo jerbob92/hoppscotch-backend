@@ -12,6 +12,7 @@ import (
 
 func AttachControllers(r *gin.RouterGroup) error {
 	r.Any("", graphqlRequest())
+	r.Any("ws", graphqlRequest())
 	return nil
 }
 
