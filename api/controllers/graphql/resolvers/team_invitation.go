@@ -2,12 +2,14 @@ package resolvers
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
 
 	"github.com/graph-gophers/graphql-go"
+	"gorm.io/gorm"
 )
 
 type TeamInvitationResolver struct {
@@ -29,15 +31,29 @@ func (r *TeamInvitationResolver) ID() (graphql.ID, error) {
 }
 
 func (r *TeamInvitationResolver) Creator() (*UserResolver, error) {
-	return nil, nil
+	db := r.c.GetDB()
+	existingUser := &models.User{}
+	err := db.Where("id = ?", r.team_invitation.UserID).First(existingUser).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("user not found")
+	}
+
+	return NewUserResolver(r.c, existingUser)
 }
 
 func (r *TeamInvitationResolver) CreatorUid() (graphql.ID, error) {
-	return "", nil
+	db := r.c.GetDB()
+	existingUser := &models.User{}
+	err := db.Where("id = ?", r.team_invitation.UserID).First(existingUser).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return graphql.ID(""), errors.New("user not found")
+	}
+
+	return graphql.ID(existingUser.FBUID), nil
 }
 
 func (r *TeamInvitationResolver) InviteeEmail() (graphql.ID, error) {
-	return "", nil
+	return graphql.ID(r.team_invitation.InviteeEmail), nil
 }
 
 func (r *TeamInvitationResolver) InviteeRole() (models.TeamMemberRole, error) {
@@ -45,11 +61,18 @@ func (r *TeamInvitationResolver) InviteeRole() (models.TeamMemberRole, error) {
 }
 
 func (r *TeamInvitationResolver) Team() (*TeamResolver, error) {
-	return nil, nil
+	db := r.c.GetDB()
+	existingTeam := &models.Team{}
+	err := db.Where("id = ?", r.team_invitation.TeamID).First(existingTeam).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("team not found")
+	}
+
+	return NewTeamResolver(r.c, existingTeam)
 }
 
 func (r *TeamInvitationResolver) TeamID() (graphql.ID, error) {
-	return "", nil
+	return graphql.ID(strconv.Itoa(int(r.team_invitation.TeamID))), nil
 }
 
 type TeamInvitationArgs struct {
@@ -58,6 +81,8 @@ type TeamInvitationArgs struct {
 
 func (b *BaseQuery) TeamInvitation(ctx context.Context, args *TeamInvitationArgs) (*TeamInvitationResolver, error) {
 	// @todo: implement me
+	// Check user/email.
+	// {"errors":[{"message":"team_invite/email_do_not_match","locations":[{"line":2,"column":3}],"path":["teamInvitation"],"extensions":{"code":"INTERNAL_SERVER_ERROR"}}],"data":null}
 	return nil, nil
 }
 
@@ -67,6 +92,8 @@ type AcceptTeamInvitationArgs struct {
 
 func (b *BaseQuery) AcceptTeamInvitation(ctx context.Context, args *AcceptTeamInvitationArgs) (*TeamMemberResolver, error) {
 	// @todo: implement me
+	// Check user/email.
+	// {"errors":[{"message":"team_invite/email_do_not_match","locations":[{"line":2,"column":3}],"path":["teamInvitation"],"extensions":{"code":"INTERNAL_SERVER_ERROR"}}],"data":null}
 	return nil, nil
 }
 

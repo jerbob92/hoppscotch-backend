@@ -2,6 +2,7 @@ package resolvers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"strconv"
@@ -165,9 +166,80 @@ type ExportCollectionsToJSONArgs struct {
 	TeamID graphql.ID
 }
 
+type ExportJSONCollectionRequest map[string]interface{}
+
+type ExportJSONCollection struct {
+	Version  int                           `json:"v"`
+	Name     string                        `json:"name"`
+	Folders  []ExportJSONCollection        `json:"folders"`
+	Requests []ExportJSONCollectionRequest `json:"requests"`
+}
+
+func GetTeamExportJSON(c *graphql_context.Context, teamID graphql.ID, parentID uint) ([]ExportJSONCollection, error) {
+	db := c.GetDB()
+	collections := []*models.TeamCollection{}
+	err := db.Model(&models.TeamCollection{}).Where("team_id = ? AND parent_id = ?", teamID, parentID).Find(&collections).Error
+	if err != nil {
+		return nil, err
+	}
+
+	output := []ExportJSONCollection{}
+	for i := range collections {
+		collection := ExportJSONCollection{
+			Version:  1,
+			Name:     collections[i].Title,
+			Folders:  []ExportJSONCollection{},
+			Requests: []ExportJSONCollectionRequest{},
+		}
+
+		requests := []*models.TeamRequest{}
+		err := db.Model(&models.TeamRequest{}).Where("team_id = ? AND team_collection_id = ?", teamID, collections[i].ID).Find(&requests).Error
+		if err != nil {
+			return nil, err
+		}
+
+		for ri := range requests {
+			requestDecode := ExportJSONCollectionRequest{}
+			json.Unmarshal([]byte(requests[ri].Request), &requestDecode)
+
+			collection.Requests = append(collection.Requests, requestDecode)
+		}
+
+		subfolders, err := GetTeamExportJSON(c, teamID, collections[i].ID)
+		if err != nil {
+			return nil, err
+		}
+
+		collection.Folders = subfolders
+
+		output = append(output, collection)
+	}
+	return output, nil
+}
+
 func (b *BaseQuery) ExportCollectionsToJSON(ctx context.Context, args *ExportCollectionsToJSONArgs) (string, error) {
-	// @todo: implement me
-	return "nil", nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return "", err
+	}
+
+	if userRole == nil {
+		return "", errors.New("you do not have access to this team")
+	}
+
+	teamExport, err := GetTeamExportJSON(c, args.TeamID, 0)
+	if err != nil {
+		return "", err
+	}
+
+	exportJSON, err := json.MarshalIndent(teamExport, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	return string(exportJSON), nil
 }
 
 type RequestsInCollectionArgs struct {
@@ -445,7 +517,7 @@ type ImportCollectionFromUserFirestoreArgs struct {
 }
 
 func (b *BaseQuery) ImportCollectionFromUserFirestore(ctx context.Context, args *ImportCollectionFromUserFirestoreArgs) (*TeamCollectionResolver, error) {
-	// @todo: implement me
+	// This doesn't seem to be used (anymore).
 	return nil, nil
 }
 
@@ -455,9 +527,144 @@ type ImportCollectionsFromJSONArgs struct {
 	TeamID             graphql.ID
 }
 
+func importJSON(c *graphql_context.Context, teamID uint, parentID uint, folders []ExportJSONCollection) error {
+	db := c.GetDB()
+	for i := range folders {
+		newCollection := &models.TeamCollection{
+			TeamID:   teamID,
+			Title:    folders[i].Name,
+			ParentID: parentID,
+		}
+
+		err := db.Save(newCollection).Error
+		if err != nil {
+			return err
+		}
+
+		resolver, err := NewTeamCollectionResolver(c, newCollection)
+		if err != nil {
+			return err
+		}
+		go func() {
+			teamSubscriptions.EnsureChannel(teamID)
+
+			teamSubscriptions.Subscriptions[teamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[teamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[teamID].TeamCollectionAdded {
+				teamSubscriptions.Subscriptions[teamID].TeamCollectionAdded[i] <- resolver
+			}
+		}()
+
+		if folders[i].Requests != nil && len(folders[i].Requests) > 0 {
+			for ri := range folders[i].Requests {
+				newTeamRequest := &models.TeamRequest{
+					TeamID:           teamID,
+					TeamCollectionID: newCollection.ID,
+				}
+
+				if nameVal, ok := folders[i].Requests[ri]["name"]; ok {
+					name, ok := nameVal.(string)
+					if ok {
+						newTeamRequest.Title = name
+					}
+				}
+
+				requestData, err := json.Marshal(folders[i].Requests[ri])
+				if err != nil {
+					return err
+				}
+
+				newTeamRequest.Request = string(requestData)
+
+				err = db.Save(newTeamRequest).Error
+				if err != nil {
+					return err
+				}
+
+				requestResolver, err := NewTeamRequestResolver(c, newTeamRequest)
+				if err != nil {
+					return err
+				}
+				go func() {
+					teamSubscriptions.EnsureChannel(teamID)
+
+					teamSubscriptions.Subscriptions[teamID].Lock.Lock()
+					defer teamSubscriptions.Subscriptions[teamID].Lock.Unlock()
+					for i := range teamSubscriptions.Subscriptions[teamID].TeamRequestAdded {
+						teamSubscriptions.Subscriptions[teamID].TeamRequestAdded[i] <- requestResolver
+					}
+				}()
+			}
+		}
+
+		if folders[i].Folders != nil && len(folders[i].Folders) > 0 {
+			err = importJSON(c, teamID, newCollection.ID, folders[i].Folders)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (b *BaseQuery) ImportCollectionsFromJSON(ctx context.Context, args *ImportCollectionsFromJSONArgs) (bool, error) {
-	// @todo: implement me
-	return false, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+
+	parentCollectionID := uint(0)
+	if args.ParentCollectionID != nil {
+		collection := &models.TeamCollection{}
+		err := db.Model(&models.TeamCollection{}).Where("id = ?", args.ParentCollectionID).First(collection).Error
+		if err != nil && err == gorm.ErrRecordNotFound {
+			return false, errors.New("you do not have access to this collection")
+		}
+		if err != nil {
+			return false, err
+		}
+
+		userRole, err := getUserRoleInTeam(ctx, c, collection.TeamID)
+		if err != nil {
+			return false, err
+		}
+
+		if userRole == nil {
+			return false, errors.New("you do not have access to this collection")
+		}
+
+		if *userRole == models.Owner || *userRole == models.Editor {
+			parentCollectionID = collection.ID
+		} else {
+			return false, errors.New("you do not have write access to this collection")
+		}
+	}
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return false, err
+	}
+
+	if userRole == nil {
+		return false, errors.New("you do not have access to this collection")
+	}
+
+	if *userRole == models.Owner || *userRole == models.Editor {
+		importData := []ExportJSONCollection{}
+		err := json.Unmarshal([]byte(args.JSONString), &importData)
+		if err != nil {
+			return false, err
+		}
+
+		teamID, _ := strconv.Atoi(string(args.TeamID))
+		err = importJSON(c, uint(teamID), parentCollectionID, importData)
+		if err != nil {
+			return false, err
+		}
+
+		return true, nil
+	}
+
+	return false, errors.New("you do not have write access to this team")
 }
 
 type RenameCollectionArgs struct {
@@ -528,7 +735,7 @@ type ReplaceCollectionsWithJSONArgs struct {
 }
 
 func (b *BaseQuery) ReplaceCollectionsWithJSON(ctx context.Context, args *ReplaceCollectionsWithJSONArgs) (bool, error) {
-	// @todo: implement me
+	// This doesn't seem to be used (anymore).
 	return false, nil
 }
 

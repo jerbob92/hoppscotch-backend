@@ -30,14 +30,23 @@ func (u *UserResolver) UID() (graphql.ID, error) {
 }
 
 func (u *UserResolver) DisplayName() (*string, error) {
+	if u.user.DisplayName == "" {
+		return nil, nil
+	}
 	return &u.user.DisplayName, nil
 }
 
 func (u *UserResolver) Email() (*string, error) {
+	if u.user.Email == "" {
+		return nil, nil
+	}
 	return &u.user.Email, nil
 }
 
 func (u *UserResolver) PhotoURL() (*string, error) {
+	if u.user.PhotoURL == "" {
+		return nil, nil
+	}
 	return &u.user.PhotoURL, nil
 }
 

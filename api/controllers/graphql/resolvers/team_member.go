@@ -51,8 +51,40 @@ type RemoveTeamMemberArgs struct {
 }
 
 func (b *BaseQuery) RemoveTeamMember(ctx context.Context, args *RemoveTeamMemberArgs) (bool, error) {
-	// @todo: implement me
-	return false, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return false, err
+	}
+
+	if userRole == nil {
+		return false, errors.New("you do not have access to this team")
+	}
+
+	if *userRole == models.Owner {
+		existingUser := &models.User{}
+		err = db.Where("fb_uid = ?", args.UserUID).First(existingUser).Error
+		if err != nil {
+			return false, err
+		}
+
+		teamMember := &models.TeamMember{}
+		err := db.Model(&models.TeamMember{}).Where("team_id = ? AND user_id", args.TeamID, args.UserUID).First(teamMember).Error
+		if err != nil {
+			return false, err
+		}
+
+		err = db.Delete(teamMember).Error
+		if err != nil {
+			return false, err
+		}
+
+		return true, nil
+	}
+
+	return false, errors.New("you do not have access to remove a team member on this team")
 }
 
 type UpdateTeamMemberRoleArgs struct {
@@ -62,6 +94,39 @@ type UpdateTeamMemberRoleArgs struct {
 }
 
 func (b *BaseQuery) UpdateTeamMemberRole(ctx context.Context, args *UpdateTeamMemberRoleArgs) (*TeamMemberResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if userRole == nil {
+		return nil, errors.New("you do not have access to this team")
+	}
+
+	if *userRole == models.Owner {
+		existingUser := &models.User{}
+		err = db.Where("fb_uid = ?", args.UserUID).First(existingUser).Error
+		if err != nil {
+			return nil, err
+		}
+
+		teamMember := &models.TeamMember{}
+		err := db.Model(&models.TeamMember{}).Where("team_id = ? AND user_id", args.TeamID, args.UserUID).First(teamMember).Error
+		if err != nil {
+			return nil, err
+		}
+
+		teamMember.Role = args.NewRole
+		err = db.Save(teamMember).Error
+		if err != nil {
+			return nil, err
+		}
+
+		return NewTeamMemberResolver(c, teamMember)
+	}
+
+	return nil, errors.New("you do not have access to update a team member's role on this team")
 }

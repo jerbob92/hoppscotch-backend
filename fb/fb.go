@@ -2,7 +2,7 @@ package fb
 
 import (
 	"context"
-	
+
 	firebase "firebase.google.com/go"
 	"firebase.google.com/go/auth"
 	"github.com/spf13/viper"

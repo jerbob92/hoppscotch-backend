@@ -9,5 +9,5 @@ type TeamInvitation struct {
 	UserID       uint
 	User         User
 	InviteeRole  TeamMemberRole
-	inviteeEmail string
+	InviteeEmail string
 }
