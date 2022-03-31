@@ -1,9 +1,13 @@
 package models
 
+import "gorm.io/gorm"
+
 type TeamInvitation struct {
-	ID           int64
-	CreatorUid   string
+	gorm.Model
+	TeamID       uint
+	Team         Team
+	UserID       uint
+	User         User
 	InviteeRole  TeamMemberRole
 	inviteeEmail string
-	TeamID       uint64
 }

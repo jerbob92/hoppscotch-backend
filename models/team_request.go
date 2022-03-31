@@ -1,7 +1,13 @@
 package models
 
+import "gorm.io/gorm"
+
 type TeamRequest struct {
-	ID      int64
-	Request string
-	Title   string
+	gorm.Model
+	TeamID           uint
+	Team             Team
+	TeamCollectionID uint
+	TeamCollection   TeamCollection
+	Request          string `gorm:"type:MEDIUMTEXT"`
+	Title            string
 }

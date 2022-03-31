@@ -1,5 +1,11 @@
 package models
 
+import "gorm.io/gorm"
+
 type TeamCollection struct {
-	ID int64
+	gorm.Model
+	TeamID   uint
+	Team     Team
+	Title    string
+	ParentID uint
 }

@@ -1,8 +1,14 @@
 package models
 
+import "gorm.io/gorm"
+
 type TeamMember struct {
-	ID   int64
-	Role TeamMemberRole
+	gorm.Model
+	TeamID uint
+	Team   Team
+	UserID uint
+	User   User
+	Role   TeamMemberRole
 }
 
 type TeamMemberRole string

@@ -1,13 +1,19 @@
 package context
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
-	"github.com/jerbob92/hoppscotch-backend/models"
+	"fmt"
 	"strings"
 	"sync"
 
+	"github.com/jerbob92/hoppscotch-backend/fb"
+	"github.com/jerbob92/hoppscotch-backend/models"
+
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 // Context is a global request context
@@ -77,7 +83,19 @@ func (c *Context) LogErr(err error, meta ...map[string]interface{}) {
 	log.WithFields(data).Error(err)
 }
 
-func (c *Context) GetUser() (*models.User, error) {
+func (c *Context) GetDB() *gorm.DB {
+	if c.GinContext == nil {
+		return nil
+	}
+	db, exists := c.GinContext.Get("DB")
+	if !exists {
+		return nil
+	}
+
+	return db.(*gorm.DB)
+}
+
+func (c *Context) GetUser(ctx context.Context) (*models.User, error) {
 	if c.ReqUser != nil {
 		return c.ReqUser, nil
 	}
@@ -87,11 +105,78 @@ func (c *Context) GetUser() (*models.User, error) {
 	}
 
 	header := c.GinContext.Request.Header.Get("Authorization")
+
+	// Fallback for subscription header.
+	if header == "" {
+		headerJSON, ok := ctx.Value("Header").(json.RawMessage)
+		if ok {
+			type initMessagePayload struct {
+				Authorization string `json:"authorization"`
+			}
+
+			var initMsg initMessagePayload
+			if err := json.Unmarshal(headerJSON, &initMsg); err != nil {
+				return nil, err
+			}
+
+			header = initMsg.Authorization
+		}
+	}
 	if strings.HasPrefix(strings.ToLower(header), "bearer ") {
 		header = header[7:]
 	}
 
-	// @todo: try to get user.
+	token, err := fb.FBAuth.VerifyIDToken(context.Background(), header)
+	if err != nil {
+		return nil, fmt.Errorf("could not validate ID token: %s", header)
+	}
 
-	return nil, nil
+	db := c.GetDB()
+	if db == nil {
+		return nil, errors.New("can't get DB")
+	}
+
+	existingUser := &models.User{}
+	err = db.Where("fb_uid = ?", token.UID).First(existingUser).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	if err != nil && err == gorm.ErrRecordNotFound {
+		newUser := &models.User{
+			FBUID:       token.UID,
+			DisplayName: "",
+			PhotoURL:    "",
+		}
+
+		email, ok := token.Claims["email"].(string)
+		if ok {
+			newUser.Email = email
+		}
+
+		userObj, err := fb.FBAuth.GetUser(ctx, token.UID)
+		if err != nil {
+			return nil, err
+		}
+
+		newUser.DisplayName = userObj.UserInfo.DisplayName
+		newUser.PhotoURL = userObj.UserInfo.PhotoURL
+
+		err = db.Create(newUser).Error
+		if err != nil {
+			return nil, err
+		}
+
+		c.ReqUser = newUser
+
+		return newUser, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	c.ReqUser = existingUser
+
+	return existingUser, nil
 }

@@ -2,10 +2,12 @@ package resolvers
 
 import (
 	"context"
-	"github.com/graph-gophers/graphql-go"
+	"strconv"
+
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
-	"strconv"
+
+	"github.com/graph-gophers/graphql-go"
 )
 
 type TeamInvitationResolver struct {
@@ -22,7 +24,7 @@ func NewTeamInvitationResolver(c *graphql_context.Context, team_invitation *mode
 }
 
 func (r *TeamInvitationResolver) ID() (graphql.ID, error) {
-	id := graphql.ID(strconv.FormatInt(r.team_invitation.ID, 10))
+	id := graphql.ID(strconv.Itoa(int(r.team_invitation.ID)))
 	return id, nil
 }
 

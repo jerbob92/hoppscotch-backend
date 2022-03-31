@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/jerbob92/hoppscotch-backend/api/controllers"
+	"github.com/jerbob92/hoppscotch-backend/db"
 	"github.com/jerbob92/hoppscotch-backend/helpers/responses"
 
 	"github.com/gin-contrib/cors"
@@ -45,6 +46,9 @@ func StartAPI() error {
 	}
 	corsConfig.AllowHeaders = append(corsConfig.AllowHeaders, "Authorization")
 	r.Use(cors.New(corsConfig))
+
+	// Attach a DB session to every request.
+	r.Use(db.AttachRequestSession())
 
 	// Bind all the routing handlers
 	if err := controllers.AttachControllers(r); err != nil {

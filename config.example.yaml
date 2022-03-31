@@ -1,7 +1,16 @@
 api:
   port: "8989"
+  wsPort: "8990"
   # development/production/test
   environment: "development"
   host: "hoppscotch-backend.com"
+database:
+  username: "hoppscotch"
+  password: "hoppscotch"
+  address: "tcp(127.0.0.1:3306)"
+  database: "hoppscotch"
+  debug: true
 allowed_domains:
   - "https://hoppscotch.io"
+firebase:
+  serviceAccountFile: ""

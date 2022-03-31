@@ -2,10 +2,14 @@ package resolvers
 
 import (
 	"context"
-	"github.com/graph-gophers/graphql-go"
+	"errors"
+	"strconv"
+
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
-	"strconv"
+
+	"github.com/graph-gophers/graphql-go"
+	"gorm.io/gorm"
 )
 
 type TeamMemberResolver struct {
@@ -22,7 +26,7 @@ func NewTeamMemberResolver(c *graphql_context.Context, team_member *models.TeamM
 }
 
 func (r *TeamMemberResolver) MembershipID() (graphql.ID, error) {
-	id := graphql.ID(strconv.FormatInt(r.team_member.ID, 10))
+	id := graphql.ID(strconv.Itoa(int(r.team_member.ID)))
 	return id, nil
 }
 
@@ -31,7 +35,14 @@ func (r *TeamMemberResolver) Role() (models.TeamMemberRole, error) {
 }
 
 func (r *TeamMemberResolver) User() (*UserResolver, error) {
-	return nil, nil
+	db := r.c.GetDB()
+	existingUser := &models.User{}
+	err := db.Where("id = ?", r.team_member.UserID).First(existingUser).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("user not found")
+	}
+
+	return NewUserResolver(r.c, existingUser)
 }
 
 type RemoveTeamMemberArgs struct {

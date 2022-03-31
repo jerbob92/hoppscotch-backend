@@ -1,5 +1,8 @@
 package models
 
+import "gorm.io/gorm"
+
 type Team struct {
-	ID int64
+	gorm.Model
+	Name string
 }

@@ -2,10 +2,16 @@ package resolvers
 
 import (
 	"context"
-	"github.com/graph-gophers/graphql-go"
+	"errors"
+	"log"
+	"strconv"
+	"sync"
+
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
-	"strconv"
+
+	"github.com/graph-gophers/graphql-go"
+	"gorm.io/gorm"
 )
 
 type TeamCollectionResolver struct {
@@ -22,16 +28,39 @@ func NewTeamCollectionResolver(c *graphql_context.Context, team_collection *mode
 }
 
 func (r *TeamCollectionResolver) ID() (graphql.ID, error) {
-	id := graphql.ID(strconv.FormatInt(r.team_collection.ID, 10))
+	id := graphql.ID(strconv.Itoa(int(r.team_collection.ID)))
 	return id, nil
 }
 
 func (r *TeamCollectionResolver) Parent() (*TeamCollectionResolver, error) {
-	return nil, nil
+	if r.team_collection.ParentID == 0 {
+		return nil, nil
+	}
+
+	db := r.c.GetDB()
+	teamCollection := &models.TeamCollection{}
+	err := db.Where("id = ?", r.team_collection.ParentID).First(teamCollection).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("team collection not found")
+	}
+
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	return NewTeamCollectionResolver(r.c, teamCollection)
 }
 
 func (r *TeamCollectionResolver) Team() (*TeamResolver, error) {
-	return nil, nil
+	db := r.c.GetDB()
+	team := &models.Team{}
+	err := db.Where("id = ?", r.team_collection.TeamID).First(team).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("team collection not found")
+	}
+
+	return NewTeamResolver(r.c, team)
 }
 
 type TeamCollectionChildrenArgs struct {
@@ -39,11 +68,31 @@ type TeamCollectionChildrenArgs struct {
 }
 
 func (r *TeamCollectionResolver) Children(args *TeamCollectionChildrenArgs) ([]*TeamCollectionResolver, error) {
-	return nil, nil
+	db := r.c.GetDB()
+	teamCollections := []*models.TeamCollection{}
+	query := db.Model(&models.TeamCollection{}).Where("parent_id = ?", r.team_collection.ID)
+	if args.Cursor != nil && *args.Cursor != "" {
+		query.Where("id > ?", args.Cursor)
+	}
+	err := query.Preload("Team").Find(&teamCollections).Error
+	if err != nil {
+		return nil, err
+	}
+
+	teamCollectionResolvers := []*TeamCollectionResolver{}
+	for i := range teamCollections {
+		newResolver, err := NewTeamCollectionResolver(r.c, teamCollections[i])
+		if err != nil {
+			return nil, err
+		}
+		teamCollectionResolvers = append(teamCollectionResolvers, newResolver)
+	}
+
+	return teamCollectionResolvers, nil
 }
 
 func (r *TeamCollectionResolver) Title() (string, error) {
-	return "", nil
+	return r.team_collection.Title, nil
 }
 
 type CollectionArgs struct {
@@ -51,8 +100,27 @@ type CollectionArgs struct {
 }
 
 func (b *BaseQuery) Collection(ctx context.Context, args *CollectionArgs) (*TeamCollectionResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+	collection := &models.TeamCollection{}
+	err := db.Model(&models.TeamCollection{}).Where("id = ?", args.CollectionID).First(collection).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("you do not have access to this collection")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	userRole, err := getUserRoleInTeam(ctx, c, collection.TeamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if userRole == nil {
+		return nil, errors.New("you do not have access to this collection")
+	}
+
+	return NewTeamCollectionResolver(c, collection)
 }
 
 type CollectionsOfTeamArgs struct {
@@ -61,8 +129,36 @@ type CollectionsOfTeamArgs struct {
 }
 
 func (b *BaseQuery) CollectionsOfTeam(ctx context.Context, args *CollectionsOfTeamArgs) ([]*TeamCollectionResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("user not in team")
+	}
+
+	db := c.GetDB()
+	teamCollections := []*models.TeamCollection{}
+	query := db.Model(&models.TeamCollection{}).Where("team_id = ?", args.TeamID)
+	if args.Cursor != nil && *args.Cursor != "" {
+		query.Where("id > ?", args.Cursor)
+	}
+	err = query.Find(&teamCollections).Error
+	if err != nil {
+		return nil, err
+	}
+
+	teamCollectionResolvers := []*TeamCollectionResolver{}
+	for i := range teamCollections {
+		newResolver, err := NewTeamCollectionResolver(c, teamCollections[i])
+		if err != nil {
+			return nil, err
+		}
+		teamCollectionResolvers = append(teamCollectionResolvers, newResolver)
+	}
+
+	return teamCollectionResolvers, nil
 }
 
 type ExportCollectionsToJSONArgs struct {
@@ -80,8 +176,46 @@ type RequestsInCollectionArgs struct {
 }
 
 func (b *BaseQuery) RequestsInCollection(ctx context.Context, args *RequestsInCollectionArgs) ([]*TeamRequestResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+	collection := &models.TeamCollection{}
+	err := db.Model(&models.TeamCollection{}).Where("id = ?", args.CollectionID).First(collection).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("you do not have access to this collection")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	userRole, err := getUserRoleInTeam(ctx, c, collection.TeamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if userRole == nil {
+		return nil, errors.New("you do not have access to this collection")
+	}
+
+	teamRequests := []*models.TeamRequest{}
+	query := db.Model(&models.TeamRequest{}).Where("team_collection_id", args.CollectionID)
+	if args.Cursor != nil && *args.Cursor != "" {
+		query.Where("id > ?", args.Cursor)
+	}
+	err = query.Find(&teamRequests).Error
+	if err != nil {
+		return nil, err
+	}
+
+	teamRequestResolvers := []*TeamRequestResolver{}
+	for i := range teamRequests {
+		newResolver, err := NewTeamRequestResolver(c, teamRequests[i])
+		if err != nil {
+			return nil, err
+		}
+		teamRequestResolvers = append(teamRequestResolvers, newResolver)
+	}
+
+	return teamRequestResolvers, nil
 }
 
 type CreateChildCollectionArgs struct {
@@ -90,8 +224,56 @@ type CreateChildCollectionArgs struct {
 }
 
 func (b *BaseQuery) CreateChildCollection(ctx context.Context, args *CreateChildCollectionArgs) (*TeamCollectionResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+	collection := &models.TeamCollection{}
+	err := db.Model(&models.TeamCollection{}).Where("id = ?", args.CollectionID).First(collection).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("you do not have access to this collection")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	userRole, err := getUserRoleInTeam(ctx, c, collection.TeamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if userRole == nil {
+		return nil, errors.New("you do not have access to this collection")
+	}
+
+	if *userRole == models.Owner || *userRole == models.Editor {
+		newCollection := &models.TeamCollection{
+			Title:    args.ChildTitle,
+			ParentID: collection.ID,
+			TeamID:   collection.TeamID,
+		}
+		err := db.Save(newCollection).Error
+		if err != nil {
+			return nil, err
+		}
+
+		resolver, err := NewTeamCollectionResolver(c, newCollection)
+		if err != nil {
+			return nil, err
+		}
+
+		go func() {
+			teamSubscriptions.EnsureChannel(newCollection.TeamID)
+
+			teamSubscriptions.Subscriptions[newCollection.TeamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[newCollection.TeamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[newCollection.TeamID].TeamCollectionAdded {
+				teamSubscriptions.Subscriptions[newCollection.TeamID].TeamCollectionAdded[i] <- resolver
+			}
+		}()
+
+		return resolver, nil
+	}
+
+	return nil, errors.New("you are not allowed to create a collection in this team")
 }
 
 type CreateTeamRequestInput struct {
@@ -106,8 +288,57 @@ type CreateRequestInCollectionArgs struct {
 }
 
 func (b *BaseQuery) CreateRequestInCollection(ctx context.Context, args *CreateRequestInCollectionArgs) (*TeamRequestResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+	collection := &models.TeamCollection{}
+	err := db.Model(&models.TeamCollection{}).Where("id = ?", args.CollectionID).First(collection).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("you do not have access to this collection")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	userRole, err := getUserRoleInTeam(ctx, c, collection.TeamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if userRole == nil {
+		return nil, errors.New("you do not have access to this collection")
+	}
+
+	if *userRole == models.Owner || *userRole == models.Editor {
+		newRequest := &models.TeamRequest{
+			TeamCollectionID: collection.ID,
+			TeamID:           collection.TeamID,
+			Title:            args.Data.Title,
+			Request:          args.Data.Request,
+		}
+		err := db.Save(newRequest).Error
+		if err != nil {
+			return nil, err
+		}
+
+		resolver, err := NewTeamRequestResolver(c, newRequest)
+		if err != nil {
+			return nil, err
+		}
+
+		go func() {
+			teamSubscriptions.EnsureChannel(newRequest.TeamID)
+
+			teamSubscriptions.Subscriptions[newRequest.TeamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[newRequest.TeamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[newRequest.TeamID].TeamRequestAdded {
+				teamSubscriptions.Subscriptions[newRequest.TeamID].TeamRequestAdded[i] <- resolver
+			}
+		}()
+
+		return resolver, nil
+	}
+
+	return nil, errors.New("you are not allowed to create a request in this team")
 }
 
 type CreateRootCollectionArgs struct {
@@ -116,8 +347,48 @@ type CreateRootCollectionArgs struct {
 }
 
 func (b *BaseQuery) CreateRootCollection(ctx context.Context, args *CreateRootCollectionArgs) (*TeamCollectionResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if userRole == nil {
+		return nil, errors.New("you do not have access to this collection")
+	}
+
+	if *userRole == models.Owner || *userRole == models.Editor {
+		parsedTeamID, _ := strconv.Atoi(string(args.TeamID))
+		newCollection := &models.TeamCollection{
+			Title:  args.Title,
+			TeamID: uint(parsedTeamID),
+		}
+		err := db.Save(newCollection).Error
+		if err != nil {
+			return nil, err
+		}
+
+		resolver, err := NewTeamCollectionResolver(c, newCollection)
+		if err != nil {
+			return nil, err
+		}
+
+		go func() {
+			teamSubscriptions.EnsureChannel(newCollection.TeamID)
+
+			teamSubscriptions.Subscriptions[newCollection.TeamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[newCollection.TeamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[newCollection.TeamID].TeamCollectionAdded {
+				teamSubscriptions.Subscriptions[newCollection.TeamID].TeamCollectionAdded[i] <- resolver
+			}
+		}()
+
+		return resolver, nil
+	}
+
+	return nil, errors.New("you are not allowed to create a collection in this team")
 }
 
 type DeleteCollectionArgs struct {
@@ -125,8 +396,46 @@ type DeleteCollectionArgs struct {
 }
 
 func (b *BaseQuery) DeleteCollection(ctx context.Context, args *DeleteCollectionArgs) (bool, error) {
-	// @todo: implement me
-	return false, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+	collection := &models.TeamCollection{}
+	err := db.Model(&models.TeamCollection{}).Where("id = ?", args.CollectionID).First(collection).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return false, errors.New("you do not have access to this collection")
+	}
+	if err != nil {
+		return false, err
+	}
+
+	userRole, err := getUserRoleInTeam(ctx, c, collection.TeamID)
+	if err != nil {
+		return false, err
+	}
+
+	if userRole == nil {
+		return false, errors.New("you do not have access to this collection")
+	}
+
+	if *userRole == models.Owner || *userRole == models.Editor {
+		err := db.Delete(collection).Error
+		if err != nil {
+			return false, err
+		}
+
+		go func() {
+			teamSubscriptions.EnsureChannel(collection.TeamID)
+
+			teamSubscriptions.Subscriptions[collection.TeamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[collection.TeamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[collection.TeamID].TeamCollectionRemoved {
+				teamSubscriptions.Subscriptions[collection.TeamID].TeamCollectionRemoved[i] <- graphql.ID(strconv.Itoa(int(collection.ID)))
+			}
+		}()
+
+		return true, nil
+	}
+
+	return false, errors.New("you are not allowed to delete a collection in this team")
 }
 
 type ImportCollectionFromUserFirestoreArgs struct {
@@ -157,8 +466,59 @@ type RenameCollectionArgs struct {
 }
 
 func (b *BaseQuery) RenameCollection(ctx context.Context, args *RenameCollectionArgs) (*TeamCollectionResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+	collection := &models.TeamCollection{}
+	err := db.Model(&models.TeamCollection{}).Where("id = ?", args.CollectionID).First(collection).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("you do not have access to this collection")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	userRole, err := getUserRoleInTeam(ctx, c, collection.TeamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if userRole == nil {
+		return nil, errors.New("you do not have access to this collection")
+	}
+
+	if *userRole == models.Owner || *userRole == models.Editor {
+		collection.Title = args.NewTitle
+		err := db.Save(collection).Error
+		if err != nil {
+			return nil, err
+		}
+
+		resolver, err := NewTeamCollectionResolver(c, collection)
+		if err != nil {
+			return nil, err
+		}
+
+		go func() {
+			log.Printf("Notify: %d", collection.TeamID)
+			teamSubscriptions.EnsureChannel(collection.TeamID)
+			log.Printf("Notify 2: %d", collection.TeamID)
+
+			teamSubscriptions.Subscriptions[collection.TeamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[collection.TeamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[collection.TeamID].TeamCollectionUpdated {
+
+				log.Printf("Notify: %d: %s", collection.TeamID, i)
+
+				teamSubscriptions.Subscriptions[collection.TeamID].TeamCollectionUpdated[i] <- resolver
+
+				log.Printf("Notified: %d: %s", collection.TeamID, i)
+			}
+		}()
+
+		return NewTeamCollectionResolver(c, collection)
+	}
+
+	return nil, errors.New("you are not allowed to rename a collection in this team")
 }
 
 type ReplaceCollectionsWithJSONArgs struct {
@@ -176,57 +536,422 @@ type SubscriptionArgs struct {
 	TeamID graphql.ID
 }
 
+type Subscriptions struct {
+	Lock                  sync.Mutex
+	TeamCollectionAdded   map[string]chan *TeamCollectionResolver
+	TeamCollectionRemoved map[string]chan graphql.ID
+	TeamCollectionUpdated map[string]chan *TeamCollectionResolver
+	TeamInvitationAdded   map[string]chan *TeamInvitationResolver
+	TeamInvitationRemoved map[string]chan graphql.ID
+	TeamMemberAdded       map[string]chan *TeamMemberResolver
+	TeamMemberRemoved     map[string]chan graphql.ID
+	TeamMemberUpdated     map[string]chan *TeamMemberResolver
+	TeamRequestAdded      map[string]chan *TeamRequestResolver
+	TeamRequestDeleted    map[string]chan graphql.ID
+	TeamRequestUpdated    map[string]chan *TeamRequestResolver
+}
+
+type TeamSubscriptions struct {
+	Subscriptions map[uint]*Subscriptions
+	Lock          sync.Mutex
+}
+
+func (t *TeamSubscriptions) EnsureChannel(channel uint) {
+	t.Lock.Lock()
+	defer t.Lock.Unlock()
+	if _, ok := t.Subscriptions[channel]; !ok {
+		t.Subscriptions[channel] = &Subscriptions{
+			Lock:                  sync.Mutex{},
+			TeamCollectionAdded:   map[string]chan *TeamCollectionResolver{},
+			TeamCollectionRemoved: map[string]chan graphql.ID{},
+			TeamCollectionUpdated: map[string]chan *TeamCollectionResolver{},
+			TeamInvitationAdded:   map[string]chan *TeamInvitationResolver{},
+			TeamInvitationRemoved: map[string]chan graphql.ID{},
+			TeamMemberAdded:       map[string]chan *TeamMemberResolver{},
+			TeamMemberRemoved:     map[string]chan graphql.ID{},
+			TeamMemberUpdated:     map[string]chan *TeamMemberResolver{},
+			TeamRequestAdded:      map[string]chan *TeamRequestResolver{},
+			TeamRequestDeleted:    map[string]chan graphql.ID{},
+			TeamRequestUpdated:    map[string]chan *TeamRequestResolver{},
+		}
+	}
+}
+
+var teamSubscriptions = TeamSubscriptions{
+	Subscriptions: map[uint]*Subscriptions{},
+	Lock:          sync.Mutex{},
+}
+
 func (b *BaseQuery) TeamCollectionAdded(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamCollectionResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan *TeamCollectionResolver)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionAdded[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionAdded[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionAdded, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 func (b *BaseQuery) TeamCollectionRemoved(ctx context.Context, args *SubscriptionArgs) (<-chan graphql.ID, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan graphql.ID)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionRemoved[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionRemoved[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionRemoved, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 func (b *BaseQuery) TeamCollectionUpdated(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamCollectionResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan *TeamCollectionResolver)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionUpdated[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionUpdated[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionUpdated, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 func (b *BaseQuery) TeamInvitationAdded(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamInvitationResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan *TeamInvitationResolver)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationAdded[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationAdded[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationAdded, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 func (b *BaseQuery) TeamInvitationRemoved(ctx context.Context, args *SubscriptionArgs) (<-chan graphql.ID, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan graphql.ID)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationRemoved[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationRemoved[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationRemoved, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 func (b *BaseQuery) TeamMemberAdded(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamMemberResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan *TeamMemberResolver)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberAdded[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberAdded[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberAdded, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 func (b *BaseQuery) TeamMemberRemoved(ctx context.Context, args *SubscriptionArgs) (<-chan graphql.ID, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan graphql.ID)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberRemoved[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberRemoved[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberRemoved, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 func (b *BaseQuery) TeamMemberUpdated(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamMemberResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan *TeamMemberResolver)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberUpdated[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberUpdated[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberUpdated, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 func (b *BaseQuery) TeamRequestAdded(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamRequestResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan *TeamRequestResolver)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestAdded[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestAdded[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestAdded, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 func (b *BaseQuery) TeamRequestDeleted(ctx context.Context, args *SubscriptionArgs) (<-chan graphql.ID, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan graphql.ID)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestDeleted[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestDeleted[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestDeleted, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 func (b *BaseQuery) TeamRequestUpdated(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamRequestResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan *TeamRequestResolver)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestUpdated[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestUpdated[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestUpdated, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }

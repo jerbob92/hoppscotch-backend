@@ -2,10 +2,14 @@ package resolvers
 
 import (
 	"context"
-	"github.com/graph-gophers/graphql-go"
+	"errors"
+	"strconv"
+
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
-	"strconv"
+
+	"github.com/graph-gophers/graphql-go"
+	"gorm.io/gorm"
 )
 
 type TeamRequestResolver struct {
@@ -22,16 +26,25 @@ func NewTeamRequestResolver(c *graphql_context.Context, team_request *models.Tea
 }
 
 func (r *TeamRequestResolver) ID() (graphql.ID, error) {
-	id := graphql.ID(strconv.FormatInt(r.team_request.ID, 10))
+	id := graphql.ID(strconv.Itoa(int(r.team_request.ID)))
 	return id, nil
 }
 
 func (r *TeamRequestResolver) Collection() (*TeamCollectionResolver, error) {
-	return nil, nil
+	db := r.c.GetDB()
+	collection := &models.TeamCollection{}
+	err := db.Model(&models.TeamCollection{}).Where("id = ?", r.team_request.TeamCollectionID).First(collection).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("you do not have access to this collection")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return NewTeamCollectionResolver(r.c, collection)
 }
 
 func (r *TeamRequestResolver) CollectionID() (graphql.ID, error) {
-	return graphql.ID(""), nil
+	return graphql.ID(strconv.Itoa(int(r.team_request.TeamCollectionID))), nil
 }
 
 func (r *TeamRequestResolver) Request() (string, error) {
@@ -39,11 +52,20 @@ func (r *TeamRequestResolver) Request() (string, error) {
 }
 
 func (r *TeamRequestResolver) Team() (*TeamResolver, error) {
-	return nil, nil
+	db := r.c.GetDB()
+	team := &models.Team{}
+	err := db.Model(&models.Team{}).Where("id = ?", r.team_request.TeamID).First(team).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("you do not have access to this team")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return NewTeamResolver(r.c, team)
 }
 
 func (r *TeamRequestResolver) TeamID() (graphql.ID, error) {
-	return graphql.ID(""), nil
+	return graphql.ID(strconv.Itoa(int(r.team_request.TeamID))), nil
 }
 
 func (r *TeamRequestResolver) Title() (string, error) {
@@ -55,8 +77,46 @@ type DeleteRequestArgs struct {
 }
 
 func (b *BaseQuery) DeleteRequest(ctx context.Context, args *DeleteRequestArgs) (bool, error) {
-	// @todo: implement me
-	return false, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+	request := &models.TeamRequest{}
+	err := db.Model(&models.TeamRequest{}).Where("id = ?", args.RequestID).First(request).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return false, errors.New("you do not have access to this request")
+	}
+	if err != nil {
+		return false, err
+	}
+
+	userRole, err := getUserRoleInTeam(ctx, c, request.TeamID)
+	if err != nil {
+		return false, err
+	}
+
+	if userRole == nil {
+		return false, errors.New("you do not have access to delete to this request")
+	}
+
+	if *userRole == models.Owner || *userRole == models.Editor {
+		err := db.Delete(request).Error
+		if err != nil {
+			return false, err
+		}
+
+		go func() {
+			teamSubscriptions.EnsureChannel(request.TeamID)
+
+			teamSubscriptions.Subscriptions[request.TeamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[request.TeamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[request.TeamID].TeamRequestDeleted {
+				teamSubscriptions.Subscriptions[request.TeamID].TeamRequestDeleted[i] <- graphql.ID(strconv.Itoa(int(request.ID)))
+			}
+		}()
+
+		return true, nil
+	}
+
+	return false, errors.New("you are not allowed to delete a request in this team")
 }
 
 type MoveRequestArgs struct {
@@ -65,8 +125,100 @@ type MoveRequestArgs struct {
 }
 
 func (b *BaseQuery) MoveRequest(ctx context.Context, args *MoveRequestArgs) (*TeamRequestResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+	request := &models.TeamRequest{}
+	err := db.Model(&models.TeamRequest{}).Where("id = ?", args.RequestID).First(request).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("you do not have access to this request")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	userRole, err := getUserRoleInTeam(ctx, c, request.TeamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if userRole == nil {
+		return nil, errors.New("you do not have move to this request")
+	}
+
+	collection := &models.TeamCollection{}
+	err = db.Model(&models.TeamCollection{}).Where("id = ?", args.DestCollID).First(collection).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("you do not have access to this collection")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	targetUserRole, err := getUserRoleInTeam(ctx, c, collection.TeamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if targetUserRole == nil {
+		return nil, errors.New("you do not have access to move to this request")
+	}
+
+	if (*userRole == models.Owner || *userRole == models.Editor) && (*targetUserRole == models.Owner || *targetUserRole == models.Editor) {
+		teamChanged := false
+		oldTeamID := request.TeamID
+		newTeamID := collection.TeamID
+		if collection.TeamID != request.TeamID {
+			teamChanged = true
+		}
+
+		request.TeamCollectionID = collection.ID
+		request.TeamID = collection.TeamID
+		err := db.Save(request).Error
+		if err != nil {
+			return nil, err
+		}
+
+		resolver, err := NewTeamRequestResolver(c, request)
+		if err != nil {
+			return nil, err
+		}
+
+		if teamChanged {
+			go func() {
+				teamSubscriptions.EnsureChannel(oldTeamID)
+
+				teamSubscriptions.Subscriptions[oldTeamID].Lock.Lock()
+				defer teamSubscriptions.Subscriptions[oldTeamID].Lock.Unlock()
+				for i := range teamSubscriptions.Subscriptions[oldTeamID].TeamRequestDeleted {
+					teamSubscriptions.Subscriptions[oldTeamID].TeamRequestDeleted[i] <- graphql.ID(strconv.Itoa(int(request.ID)))
+				}
+			}()
+
+			go func() {
+				teamSubscriptions.EnsureChannel(newTeamID)
+
+				teamSubscriptions.Subscriptions[newTeamID].Lock.Lock()
+				defer teamSubscriptions.Subscriptions[newTeamID].Lock.Unlock()
+				for i := range teamSubscriptions.Subscriptions[newTeamID].TeamRequestAdded {
+					teamSubscriptions.Subscriptions[newTeamID].TeamRequestAdded[i] <- resolver
+				}
+			}()
+		} else {
+			go func() {
+				teamSubscriptions.EnsureChannel(newTeamID)
+
+				teamSubscriptions.Subscriptions[newTeamID].Lock.Lock()
+				defer teamSubscriptions.Subscriptions[newTeamID].Lock.Unlock()
+				for i := range teamSubscriptions.Subscriptions[newTeamID].TeamRequestUpdated {
+					teamSubscriptions.Subscriptions[newTeamID].TeamRequestUpdated[i] <- resolver
+				}
+			}()
+		}
+
+		return resolver, nil
+	}
+
+	return nil, errors.New("you are not allowed to delete a request in this team")
 }
 
 type UpdateTeamRequestInput struct {
@@ -80,6 +232,55 @@ type UpdateRequestArgs struct {
 }
 
 func (b *BaseQuery) UpdateRequest(ctx context.Context, args *UpdateRequestArgs) (*TeamRequestResolver, error) {
-	// @todo: implement me
-	return nil, nil
+	c := b.GetReqC(ctx)
+	db := c.GetDB()
+	request := &models.TeamRequest{}
+	err := db.Model(&models.TeamRequest{}).Where("id = ?", args.RequestID).First(request).Error
+	if err != nil && err == gorm.ErrRecordNotFound {
+		return nil, errors.New("you do not have access to this request")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	userRole, err := getUserRoleInTeam(ctx, c, request.TeamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if userRole == nil {
+		return nil, errors.New("you do not have access to update to this request")
+	}
+
+	if *userRole == models.Owner || *userRole == models.Editor {
+		if args.Data.Title != nil {
+			request.Title = *args.Data.Title
+		}
+		if args.Data.Request != nil {
+			request.Request = *args.Data.Request
+		}
+		err := db.Save(request).Error
+		if err != nil {
+			return nil, err
+		}
+
+		requestResolver, err := NewTeamRequestResolver(c, request)
+		if err != nil {
+			return nil, err
+		}
+
+		go func() {
+			teamSubscriptions.EnsureChannel(request.TeamID)
+
+			teamSubscriptions.Subscriptions[request.TeamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[request.TeamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[request.TeamID].TeamRequestUpdated {
+				teamSubscriptions.Subscriptions[request.TeamID].TeamRequestUpdated[i] <- requestResolver
+			}
+		}()
+
+		return requestResolver, nil
+	}
+
+	return nil, errors.New("you are not allowed to update a request in this team")
 }

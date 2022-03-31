@@ -1,6 +1,11 @@
 package models
 
+import "gorm.io/gorm"
+
 type Shortcode struct {
-	ID      int64
+	gorm.Model
+	Code    string
 	Request string
+	UserID  uint
+	User    User
 }
