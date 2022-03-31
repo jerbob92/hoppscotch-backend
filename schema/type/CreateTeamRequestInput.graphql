@@ -1,0 +1,16 @@
+input CreateTeamRequestInput {
+    """
+    JSON string representing the request data
+    """
+    request: String!
+
+    """
+    ID of the team the collection belongs to
+    """
+    teamID: ID!
+
+    """
+    Displayed title of the request
+    """
+    title: String!
+}

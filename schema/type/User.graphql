@@ -1,0 +1,21 @@
+type User {
+  """
+  Firebase UID of the user
+  """
+  uid: ID!
+
+  """
+  Displayed name of the user (if given)
+  """
+  displayName: String
+
+  """
+  Email of the user (if given)
+  """
+  email: String
+
+  """
+  URL to the profile photo of the user (if given)
+  """
+  photoURL: String
+}

@@ -1,0 +1,11 @@
+input UpdateTeamRequestInput {
+   """
+   JSON string representing the request data
+   """
+   request: String
+
+   """
+   Displayed title of the request
+   """
+   title: String
+}

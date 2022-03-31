@@ -1,0 +1,18 @@
+type TeamMember {
+  """
+  Membership ID of the Team Member
+  """
+  membershipID: ID!
+
+  """
+  Role of the given team member in the given team
+  """
+  role: TeamMemberRole!
+  user: User!
+}
+
+enum TeamMemberRole {
+    EDITOR
+    OWNER
+    VIEWER
+}

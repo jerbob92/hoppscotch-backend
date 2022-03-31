@@ -1,0 +1,36 @@
+type TeamRequest {
+  """
+  ID of the request
+  """
+  id: ID!
+
+  """
+  ID of the collection the request belongs to.
+  """
+  collectionID: ID!
+
+  """
+  ID of the team the request belongs to.
+  """
+  teamID: ID!
+
+  """
+  JSON string representing the request data
+  """
+  request: String!
+
+  """
+  Displayed title of the request
+  """
+  title: String!
+
+  """
+  Team the request belongs to
+  """
+  team: Team!
+
+  """
+  Collection the request belongs to
+  """
+  collection: TeamCollection!
+}

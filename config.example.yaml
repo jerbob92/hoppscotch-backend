@@ -1,0 +1,7 @@
+api:
+  port: "8989"
+  # development/production/test
+  environment: "development"
+  host: "hoppscotch-backend.com"
+allowed_domains:
+  - "https://hoppscotch.io"

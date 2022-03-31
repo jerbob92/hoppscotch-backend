@@ -1,0 +1,46 @@
+type Team {
+  """
+  ID of the team
+  """
+  id: ID!
+
+  """
+  Displayed name of the team
+  """
+  name: String!
+
+  """
+  Returns the list of members of a team
+  """
+  members(cursor: ID): [TeamMember!]!
+
+  """
+  Returns the list of members of a team
+  """
+  teamMembers: [TeamMember!]!
+
+  """
+  The role of the current user in the team
+  """
+  myRole: TeamMemberRole!
+
+  """
+  The number of users with the OWNER role in the team
+  """
+  ownersCount: Int!
+
+  """
+  The number of users with the EDITOR role in the team
+  """
+  editorsCount: Int!
+
+  """
+  The number of users with the VIEWER role in the team
+  """
+  viewersCount: Int!
+
+  """
+  Get all the active invites in the team
+  """
+  teamInvitations: [TeamInvitation!]!
+}

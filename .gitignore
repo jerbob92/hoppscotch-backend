@@ -1,0 +1,20 @@
+/bin
+!/bin/.gitkeep
+/.idea
+/*.log
+/*.log.*
+/out
+/config.gcfg
+/config.yml
+/config.yaml
+/pkg
+/google-auth.json
+/static/swagger.json
+/maven
+!/maven/.gitkeep
+/podspecs
+!/podspecs/.gitkeep
+/tmp
+
+# Binaries
+API

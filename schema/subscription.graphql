@@ -1,0 +1,56 @@
+type Subscription {
+  """
+  Listen to when a new team member being added to the team. The emitted value is the new team member added.
+  """
+  teamMemberAdded(teamID: ID!): TeamMember!
+
+  """
+  Listen to when a team member status has been updated. The emitted value is the new team member status
+  """
+  teamMemberUpdated(teamID: ID!): TeamMember!
+
+  """
+  Listen to when a team member has been removed. The emitted value is the uid of the user removed
+  """
+  teamMemberRemoved(teamID: ID!): ID!
+
+  """
+  Listen to when a collection has been added to a team. The emitted value is the team added
+  """
+  teamCollectionAdded(teamID: ID!): TeamCollection!
+
+  """
+  Listen to when a collection has been updated.
+  """
+  teamCollectionUpdated(teamID: ID!): TeamCollection!
+
+  """
+  Listen to when a collection has been removed
+  """
+  teamCollectionRemoved(teamID: ID!): ID!
+
+  """
+  Emits when a new request is added to a team
+  """
+  teamRequestAdded(teamID: ID!): TeamRequest!
+
+  """
+  Emitted when a request has been updated
+  """
+  teamRequestUpdated(teamID: ID!): TeamRequest!
+
+  """
+  Emitted when a request has been deleted. Only the id of the request is emitted.
+  """
+  teamRequestDeleted(teamID: ID!): ID!
+
+  """
+  Listens to when a Team Invitation is added
+  """
+  teamInvitationAdded(teamID: ID!): TeamInvitation!
+
+  """
+  Listens to when a Team Invitation is removed
+  """
+  teamInvitationRemoved(teamID: ID!): ID!
+}

@@ -1,0 +1,26 @@
+type TeamCollection {
+  """
+  ID of the collection
+  """
+  id: ID!
+
+  """
+  Displayed title of the collection
+  """
+  title: String!
+
+  """
+  Team the collection belongs to
+  """
+  team: Team!
+
+  """
+  The collection whom is the parent of this collection (null if this is root collection)
+  """
+  parent: TeamCollection
+
+  """
+  List of children collection
+  """
+  children(cursor: String): [TeamCollection!]!
+}

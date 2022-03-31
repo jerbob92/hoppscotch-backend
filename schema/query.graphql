@@ -1,0 +1,68 @@
+type Query {
+  """
+  Finds a user by their UID or null if no match
+  @deprecated Deprecated due to privacy concerns. Try to get the user from the context-relevant queries
+  """
+  user(uid: ID!): User
+
+  """
+  Gives details of the user executing this query (pass Authorization 'Bearer' header)
+  """
+  me: User!
+
+  """
+  List of teams that the executing user belongs to.
+  """
+  myTeams(cursor: ID): [Team!]!
+
+  """
+  Returns the detail of the team with the given ID
+  """
+  team(teamID: ID!): Team
+
+  """
+  Returns the JSON string giving the collections and their contents of the team
+  """
+  exportCollectionsToJSON(teamID: ID!): String!
+
+  """
+  Returns the collections of the team
+  """
+  rootCollectionsOfTeam(cursor: ID, teamID: ID!): [TeamCollection!]!
+
+  """
+  Returns the collections of the team
+  @deprecated Deprecated because of no practical use. Use `rootCollectionsOfTeam` instead.
+  """
+  collectionsOfTeam(cursor: ID, teamID: ID!): [TeamCollection!]!
+
+  """
+  Get a collection with the given ID or null (if not exists)
+  """
+  collection(collectionID: ID!): TeamCollection
+
+  """
+  Search the team for a specific request with title
+  """
+  searchForRequest(cursor: ID, searchTerm: String!, teamID: ID!): [TeamRequest!]!
+
+  """
+  Gives a request with the given ID or null (if not exists)
+  """
+  request(requestID: ID!): TeamRequest
+
+  """
+  Gives a list of requests in the collection
+  """
+  requestsInCollection(collectionID: ID!, cursor: ID): [TeamRequest!]!
+
+  """
+  Gets the Team Invitation with the given ID, or null if not exists
+  """
+  teamInvitation(inviteID: ID!): TeamInvitation!
+
+  """
+  Resolves and returns a shortcode data
+  """
+  shortcode(code: ID!): Shortcode
+}

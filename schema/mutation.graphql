@@ -1,0 +1,112 @@
+type Mutation {
+  """
+  Creates a team owned by the executing user
+  """
+  createTeam(name: String!): Team!
+
+  """
+  Leaves a team the executing user is a part of
+  """
+  leaveTeam(teamID: ID!): Boolean!
+
+  """
+  Removes the team member from the team
+  """
+  removeTeamMember(teamID: ID!, userUid: ID!): Boolean!
+
+  """
+  Renames a team
+  """
+  renameTeam(newName: String!, teamID: ID!): Team!
+
+  """
+  Deletes the team
+  """
+  deleteTeam(teamID: ID!): Boolean!
+
+  """
+  Adds a team member to the team via email
+  @deprecated This is only present for backwards compatibility and will be removed soon use team invitations instead
+  """
+  addTeamMemberByEmail(teamID: ID!, userEmail: String!, userRole: TeamMemberRole!): TeamMember!
+
+  """
+  Update role of a team member the executing user owns
+  """
+  updateTeamMemberRole(newRole: TeamMemberRole!, teamID: ID!, userUid: ID!): TeamMember!
+
+  """
+  Creates a collection at the root of the team hierarchy (no parent collection)
+  """
+  createRootCollection(teamID: ID!, title: String!): TeamCollection!
+
+  """
+  Import collection from user firestore
+  """
+  importCollectionFromUserFirestore(fbCollectionPath: String!, parentCollectionID: ID, teamID: ID!): TeamCollection!
+
+  """
+  Import collections from JSON string to the specified Team
+  """
+  importCollectionsFromJSON(jsonString: String!, parentCollectionID: ID, teamID: ID!): Boolean!
+
+  """
+  Replace existing collections of a specific team with collections in JSON string
+  """
+  replaceCollectionsWithJSON(jsonString: String!, parentCollectionID: ID, teamID: ID!): Boolean!
+
+  """
+  Create a collection that has a parent collection
+  """
+  createChildCollection(childTitle: String!, collectionID: ID!): TeamCollection!
+
+  """
+  Rename a collection
+  """
+  renameCollection(collectionID: ID!, newTitle: String!): TeamCollection!
+
+  """
+  Delete a collection
+  """
+  deleteCollection(collectionID: ID!): Boolean!
+
+  """
+  Create a request in the given collection.
+  """
+  createRequestInCollection(collectionID: ID!, data: CreateTeamRequestInput!): TeamRequest!
+
+  """
+  Update a request with the given ID
+  """
+  updateRequest(data: UpdateTeamRequestInput!, requestID: ID!): TeamRequest!
+
+  """
+  Delete a request with the given ID
+  """
+  deleteRequest(requestID: ID!): Boolean!
+
+  """
+  Move a request to the given collection
+  """
+  moveRequest(destCollID: ID!, requestID: ID!): TeamRequest!
+
+  """
+  Creates a Team Invitation
+  """
+  createTeamInvitation(inviteeEmail: String!, inviteeRole: TeamMemberRole!, teamID: ID!): TeamInvitation!
+
+  """
+  Revokes an invitation and deletes it
+  """
+  revokeTeamInvitation(inviteID: ID!): Boolean!
+
+  """
+  Accept an Invitation
+  """
+  acceptTeamInvitation(inviteID: ID!): TeamMember!
+
+  """
+  Create a shortcode for the given request.
+  """
+  createShortcode(request: String!): Shortcode!
+}
