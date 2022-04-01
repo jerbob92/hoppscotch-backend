@@ -31,6 +31,14 @@ docker run \
 docker start hoppscotch_api_mysql
 ```
 
+## Firebase
+
+You will need to create a Firebase project to get this whole thing running (frontend and backend).
+
+Copy the .env.example in the frontend project to .env en fill in your Firebase credentials.
+
+Generate a [Firebase Admin SDK service account](https://console.firebase.google.com/project/_/settings/serviceaccounts/adminsdk) and reference the JSON from the config.yaml.
+
 ## Quickstart
 
 - Copy the config.example.yaml to config.yaml
@@ -49,4 +57,8 @@ If you're behind a reverse proxy, it might be useful to use `/graphql` for the n
 ## Frontend deployment
 
 The default frontend requires some minor changes to connect to your backend since it's not made to connect to a custom backend.
+
+You can see the required changes in [this commit](https://github.com/jerbob92/hoppscotch/commit/2c98d6f8471691156c99a4a3bdd37ab95286fb21). You can also use that branch to do your own deployment.
+
+Be aware that the backend needs to be running to build the frontend because it fetches the schema on build time.
 
