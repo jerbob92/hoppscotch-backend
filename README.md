@@ -46,7 +46,7 @@ Generate a [Firebase Admin SDK service account](https://console.firebase.google.
 
 ## Deployment
 
-This backend is available as a [docker image](https://hub.docker.com/repository/docker/jerbob92/hoppscotch-backend/general) `jerbob92/hoppscotch-backend`.
+This backend is available as a [docker image](https://hub.docker.com/r/jerbob92/hoppscotch-backend) `jerbob92/hoppscotch-backend`.
 
 The configuration is expected in the working directory or the folder `/etc/api-config`.
 
