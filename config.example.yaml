@@ -1,6 +1,5 @@
 api:
   port: "8989"
-  wsPort: "8990"
   # development/production/test
   environment: "development"
 database:
@@ -13,8 +12,8 @@ allowed_domains: # This is to allow CORS to do it's magic.
   - "https://hoppscotch.io"
 frontend_domain: "https://hoppscotch.io" # This is to format mail links.
 firebase:
-  serviceAccountFile: ""
-smtp:
+  serviceAccountFile: "" # Path to Firebase SDK admin Service Account JSON file.
+smtp: # SMTP information to send invite mails.
   host: ""
   port: 587
   username: ""
