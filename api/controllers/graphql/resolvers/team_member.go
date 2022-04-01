@@ -71,7 +71,7 @@ func (b *BaseQuery) RemoveTeamMember(ctx context.Context, args *RemoveTeamMember
 		}
 
 		teamMember := &models.TeamMember{}
-		err := db.Model(&models.TeamMember{}).Where("team_id = ? AND user_id", args.TeamID, args.UserUID).First(teamMember).Error
+		err := db.Model(&models.TeamMember{}).Where("team_id = ? AND user_id = ?", args.TeamID, existingUser.ID).First(teamMember).Error
 		if err != nil {
 			return false, err
 		}
@@ -80,6 +80,16 @@ func (b *BaseQuery) RemoveTeamMember(ctx context.Context, args *RemoveTeamMember
 		if err != nil {
 			return false, err
 		}
+
+		go func() {
+			teamSubscriptions.EnsureChannel(teamMember.TeamID)
+
+			teamSubscriptions.Subscriptions[teamMember.TeamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[teamMember.TeamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[teamMember.TeamID].TeamMemberRemoved {
+				teamSubscriptions.Subscriptions[teamMember.TeamID].TeamMemberRemoved[i] <- graphql.ID(existingUser.FBUID)
+			}
+		}()
 
 		return true, nil
 	}
@@ -114,7 +124,7 @@ func (b *BaseQuery) UpdateTeamMemberRole(ctx context.Context, args *UpdateTeamMe
 		}
 
 		teamMember := &models.TeamMember{}
-		err := db.Model(&models.TeamMember{}).Where("team_id = ? AND user_id", args.TeamID, args.UserUID).First(teamMember).Error
+		err := db.Model(&models.TeamMember{}).Where("team_id = ? AND user_id = ?", args.TeamID, existingUser.ID).First(teamMember).Error
 		if err != nil {
 			return nil, err
 		}
@@ -125,7 +135,22 @@ func (b *BaseQuery) UpdateTeamMemberRole(ctx context.Context, args *UpdateTeamMe
 			return nil, err
 		}
 
-		return NewTeamMemberResolver(c, teamMember)
+		resolver, err := NewTeamMemberResolver(c, teamMember)
+		if err != nil {
+			return nil, err
+		}
+
+		go func() {
+			teamSubscriptions.EnsureChannel(teamMember.TeamID)
+
+			teamSubscriptions.Subscriptions[teamMember.TeamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[teamMember.TeamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[teamMember.TeamID].TeamMemberUpdated {
+				teamSubscriptions.Subscriptions[teamMember.TeamID].TeamMemberUpdated[i] <- resolver
+			}
+		}()
+
+		return resolver, nil
 	}
 
 	return nil, errors.New("you do not have access to update a team member's role on this team")

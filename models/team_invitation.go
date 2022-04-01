@@ -10,4 +10,5 @@ type TeamInvitation struct {
 	User         User
 	InviteeRole  TeamMemberRole
 	InviteeEmail string
+	Code         string
 }

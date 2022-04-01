@@ -3,14 +3,26 @@ api:
   wsPort: "8990"
   # development/production/test
   environment: "development"
-  host: "hoppscotch-backend.com"
 database:
   username: "hoppscotch"
   password: "hoppscotch"
   address: "tcp(127.0.0.1:3306)"
   database: "hoppscotch"
   debug: true
-allowed_domains:
+allowed_domains: # This is to allow CORS to do it's magic.
   - "https://hoppscotch.io"
+frontend_domain: "https://hoppscotch.io" # This is to format mail links.
 firebase:
   serviceAccountFile: ""
+smtp:
+  host: ""
+  port: 587
+  username: ""
+  password: ""
+  from:
+    name: ""
+    email: ""
+mailTemplates:
+  teamInvite:
+    subject: "{{.InvitingUserName}} invited you to join {{.TeamName}} in Hoppscotch"
+    body: "<html><body>{{.InvitingUserName}} with {{.TeamName}} has invited you to use Hoppscotch to collaborate with them. Click <a href=\"{{.JoinLink}}\">here</a> to set up your account and get started.</body></html>"

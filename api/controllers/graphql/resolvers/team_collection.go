@@ -706,19 +706,12 @@ func (b *BaseQuery) RenameCollection(ctx context.Context, args *RenameCollection
 		}
 
 		go func() {
-			log.Printf("Notify: %d", collection.TeamID)
 			teamSubscriptions.EnsureChannel(collection.TeamID)
-			log.Printf("Notify 2: %d", collection.TeamID)
 
 			teamSubscriptions.Subscriptions[collection.TeamID].Lock.Lock()
 			defer teamSubscriptions.Subscriptions[collection.TeamID].Lock.Unlock()
 			for i := range teamSubscriptions.Subscriptions[collection.TeamID].TeamCollectionUpdated {
-
-				log.Printf("Notify: %d: %s", collection.TeamID, i)
-
 				teamSubscriptions.Subscriptions[collection.TeamID].TeamCollectionUpdated[i] <- resolver
-
-				log.Printf("Notified: %d: %s", collection.TeamID, i)
 			}
 		}()
 

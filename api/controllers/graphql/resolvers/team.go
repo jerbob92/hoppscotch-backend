@@ -175,7 +175,7 @@ func (b *BaseQuery) MyTeams(ctx context.Context, args *MyTeamsArgs) ([]*TeamReso
 
 	db := c.GetDB()
 	teams := []*models.Team{}
-	query := db.Model(&models.Team{}).Joins("JOIN `team_members` ON `team_members`.`team_id` = `teams`.`id`").Where("`team_members`.`user_id` = ?", currentUser.ID)
+	query := db.Model(&models.Team{}).Joins("JOIN `team_members` ON `team_members`.`team_id` = `teams`.`id`").Where("`team_members`.`user_id` = ? AND `team_members`.`deleted_at` IS NULL", currentUser.ID)
 	if args.Cursor != nil && *args.Cursor != "" {
 		query.Where("id > ?", args.Cursor)
 	}
@@ -440,6 +440,16 @@ func (b *BaseQuery) LeaveTeam(ctx context.Context, args *LeaveTeamArgs) (bool, e
 	if err != nil {
 		return false, err
 	}
+
+	go func() {
+		teamSubscriptions.EnsureChannel(existingTeamMember.TeamID)
+
+		teamSubscriptions.Subscriptions[existingTeamMember.TeamID].Lock.Lock()
+		defer teamSubscriptions.Subscriptions[existingTeamMember.TeamID].Lock.Unlock()
+		for i := range teamSubscriptions.Subscriptions[existingTeamMember.TeamID].TeamMemberRemoved {
+			teamSubscriptions.Subscriptions[existingTeamMember.TeamID].TeamMemberRemoved[i] <- graphql.ID(currentUser.FBUID)
+		}
+	}()
 
 	return true, nil
 }
