@@ -10,6 +10,7 @@ This API does not store its data in Firebase (which the official probably does),
 
 - MySQL
 - An SMTP mail server
+- A Firebase project & webapp credentials & Admin SDK credentials
 
 ## Get requirements up and running
 
