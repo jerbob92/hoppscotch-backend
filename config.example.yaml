@@ -8,7 +8,7 @@ database:
   database: "hoppscotch"
   host: "127.0.0.1"
   port: "3306"
-  driver: "mysql"
+  driver: "mysql" # mysql or postgres
   debug: true
 allowed_domains: # This is to allow CORS to do it's magic.
   - "https://hoppscotch.io"
