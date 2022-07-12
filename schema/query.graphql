@@ -65,4 +65,9 @@ type Query {
   Resolves and returns a shortcode data
   """
   shortcode(code: ID!): Shortcode
+
+  """
+  Resolves and returns own shortcodes
+  """
+  myShortcodes(cursor: ID): [Shortcode!]!
 }

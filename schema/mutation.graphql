@@ -109,4 +109,9 @@ type Mutation {
   Create a shortcode for the given request.
   """
   createShortcode(request: String!): Shortcode!
+
+  """
+  Revoke a shortcode and deletes it
+  """
+  revokeShortcode(code: ID!): Boolean!
 }
