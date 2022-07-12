@@ -265,22 +265,12 @@ func (b *BaseQuery) MyShortcodesRevoked(ctx context.Context) (<-chan *ShortcodeR
 }
 
 const alphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-const alphanumlower = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 func RandString(n int) string {
 	var bytes = make([]byte, n)
 	rand.Read(bytes)
 	for i, b := range bytes {
 		bytes[i] = alphanum[b%byte(len(alphanum))]
-	}
-	return string(bytes)
-}
-
-func RandStringLower(n int) string {
-	var bytes = make([]byte, n)
-	rand.Read(bytes)
-	for i, b := range bytes {
-		bytes[i] = alphanumlower[b%byte(len(alphanumlower))]
 	}
 	return string(bytes)
 }
