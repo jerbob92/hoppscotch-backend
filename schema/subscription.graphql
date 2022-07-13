@@ -53,4 +53,16 @@ type Subscription {
   Listens to when a Team Invitation is removed
   """
   teamInvitationRemoved(teamID: ID!): ID!
+
+  """
+  Listens to when a Shortcode is created
+  """
+  myShortcodesCreated(): Shortcode!
+
+  """
+  Listens to when a Shortcode is revoked
+  """
+  myShortcodesRevoked(): Shortcode!
+
+
 }

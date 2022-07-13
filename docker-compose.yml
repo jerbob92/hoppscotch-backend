@@ -1,0 +1,29 @@
+version: '3.1'
+
+services:
+  backend:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    image: hoppscotch-backend:latest
+    restart: always
+    ports:
+      - "8989:8989"
+    depends_on:
+      - mysql
+    volumes:
+      - ./tmp/config.yaml:/etc/api-config/config.yaml
+      - ./tmp/postcard.json:/usr/bin/postcard.json
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: hoppscotch
+      MYSQL_DATABASE: hoppscotch
+      MYSQL_USER: hoppscotch
+      MYSQL_PASSWORD: hoppscotch
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+volumes:
+  mysql-data:

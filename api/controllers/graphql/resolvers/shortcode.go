@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"sync"
 
 	"github.com/graph-gophers/graphql-go"
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
@@ -15,6 +16,34 @@ import (
 type ShortcodeResolver struct {
 	c         *graphql_context.Context
 	shortcode *models.Shortcode
+}
+
+type ShortcodeSubscriptions struct {
+	Lock                sync.Mutex
+	MyShortcodesCreated map[string]chan *ShortcodeResolver
+	MyShortcodesRevoked map[string]chan *ShortcodeResolver
+}
+
+type UserShortcodeSubscriptions struct {
+	Subscriptions map[uint]*ShortcodeSubscriptions
+	Lock          sync.Mutex
+}
+
+func (t *UserShortcodeSubscriptions) EnsureChannel(channel uint) {
+	t.Lock.Lock()
+	defer t.Lock.Unlock()
+	if _, ok := t.Subscriptions[channel]; !ok {
+		t.Subscriptions[channel] = &ShortcodeSubscriptions{
+			Lock:                sync.Mutex{},
+			MyShortcodesCreated: map[string]chan *ShortcodeResolver{},
+			MyShortcodesRevoked: map[string]chan *ShortcodeResolver{},
+		}
+	}
+}
+
+var userShortcodeSubscriptions = UserShortcodeSubscriptions{
+	Subscriptions: map[uint]*ShortcodeSubscriptions{},
+	Lock:          sync.Mutex{},
 }
 
 func NewShortcodeResolver(c *graphql_context.Context, shortcode *models.Shortcode) (*ShortcodeResolver, error) {
@@ -32,6 +61,10 @@ func (r *ShortcodeResolver) ID() (graphql.ID, error) {
 
 func (r *ShortcodeResolver) Request() (string, error) {
 	return r.shortcode.Request, nil
+}
+
+func (r *ShortcodeResolver) CreatedOn() (string, error) {
+	return r.shortcode.CreatedAt.String(), nil
 }
 
 type ShortcodeArgs struct {
@@ -76,26 +109,168 @@ func (b *BaseQuery) CreateShortcode(ctx context.Context, args *CreateShortcodeAr
 		return nil, err
 	}
 
-	return NewShortcodeResolver(c, newShortCode)
+	resolver, err := NewShortcodeResolver(c, newShortCode)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		userShortcodeSubscriptions.EnsureChannel(currentUser.ID)
+
+		userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
+		defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
+		for i := range userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated {
+			userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated[i] <- resolver
+		}
+	}()
+
+	return resolver, nil
+}
+
+type RevokeShortcodeArgs struct {
+	Code graphql.ID
+}
+
+func (b *BaseQuery) RevokeShortcode(ctx context.Context, args *RevokeShortcodeArgs) (bool, error) {
+	c := b.GetReqC(ctx)
+	currentUser, err := c.GetUser(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	shortcode := &models.Shortcode{}
+	db := c.GetDB()
+	err = db.Model(&models.Shortcode{}).Where("code = ?", args.Code).First(shortcode).Error
+	if err != nil {
+		return false, err
+	}
+
+	if shortcode.UserID != currentUser.ID {
+		return false, errors.New("you do not have access to this shortcode")
+	}
+
+	err = db.Delete(shortcode).Error
+	if err != nil {
+		return false, err
+	}
+
+	resolver, err := NewShortcodeResolver(c, shortcode)
+	if err != nil {
+		return false, err
+	}
+
+	go func() {
+		userShortcodeSubscriptions.EnsureChannel(currentUser.ID)
+
+		userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
+		defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
+		for i := range userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated {
+			userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated[i] <- resolver
+		}
+	}()
+
+	return true, nil
+}
+
+type MyShortcodeArgs struct {
+	Cursor *graphql.ID
+}
+
+func (b BaseQuery) MyShortcodes(ctx context.Context, args *MyShortcodeArgs) ([]*ShortcodeResolver, error) {
+	c := b.GetReqC(ctx)
+	currentUser, err := c.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	shortcodes := []*models.Shortcode{}
+	db := c.GetDB()
+	query := db.Model(&models.Shortcode{}).Where("user_id = ?", currentUser.ID)
+	if args.Cursor != nil && *args.Cursor != "" {
+		query.Where("id > ?", args.Cursor)
+	}
+	err = query.Find(&shortcodes).Error
+	if err != nil {
+		return nil, err
+	}
+
+	shortcodesResolvers := []*ShortcodeResolver{}
+	for i := range shortcodes {
+		newResolver, err := NewShortcodeResolver(c, shortcodes[i])
+		if err != nil {
+			return nil, err
+		}
+		shortcodesResolvers = append(shortcodesResolvers, newResolver)
+	}
+
+	return shortcodesResolvers, nil
+}
+
+func (b *BaseQuery) MyShortcodesCreated(ctx context.Context) (<-chan *ShortcodeResolver, error) {
+	c := b.GetReqC(ctx)
+	currentUser, err := c.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userShortcodeSubscriptions.EnsureChannel(currentUser.ID)
+
+	notificationChannel := make(chan *ShortcodeResolver)
+	subID := RandString(32)
+	userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
+	defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
+	userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
+			defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
+			close(userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated[subID])
+			delete(userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
+}
+
+func (b *BaseQuery) MyShortcodesRevoked(ctx context.Context) (<-chan *ShortcodeResolver, error) {
+	c := b.GetReqC(ctx)
+	currentUser, err := c.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userShortcodeSubscriptions.EnsureChannel(currentUser.ID)
+
+	notificationChannel := make(chan *ShortcodeResolver)
+	subID := RandString(32)
+	userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
+	defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
+	userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesRevoked[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
+			defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
+			close(userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesRevoked[subID])
+			delete(userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesRevoked, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
 }
 
 const alphanum = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-const alphanumlower = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 func RandString(n int) string {
 	var bytes = make([]byte, n)
 	rand.Read(bytes)
 	for i, b := range bytes {
 		bytes[i] = alphanum[b%byte(len(alphanum))]
-	}
-	return string(bytes)
-}
-
-func RandStringLower(n int) string {
-	var bytes = make([]byte, n)
-	rand.Read(bytes)
-	for i, b := range bytes {
-		bytes[i] = alphanumlower[b%byte(len(alphanumlower))]
 	}
 	return string(bytes)
 }
