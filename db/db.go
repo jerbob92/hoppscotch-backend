@@ -19,6 +19,7 @@ type DatabaseDSN struct {
 	password          string
 	host              string
 	port              string
+	address           string
 	connectionOptions string
 }
 
@@ -26,6 +27,10 @@ func (dsn *DatabaseDSN) GetMysqlDSN() string {
 	var MysqlConnectionOptions = "charset=utf8mb4&parseTime=True&loc=Local"
 	if dsn.connectionOptions != "" {
 		MysqlConnectionOptions += "&" + dsn.connectionOptions
+	}
+	// For backward compatibility
+	if dsn.address != "" && dsn.driver == "" {
+		return fmt.Sprintf("%s:%s@%s/%s?%s", dsn.username, dsn.password, dsn.address, dsn.database, MysqlConnectionOptions)
 	}
 	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?%s", dsn.username, dsn.password, dsn.host, dsn.port, dsn.database, MysqlConnectionOptions)
 }
@@ -44,6 +49,11 @@ func (dsn *DatabaseDSN) GetPostgres() gorm.Dialector {
 }
 
 func (dsn *DatabaseDSN) GetDialector() (gorm.Dialector, error) {
+	// Assuming old version won't have driver field but will have address field
+	if dsn.address != "" && dsn.driver == "" {
+		return dsn.GetMysql(), nil
+	}
+
 	switch dsn.driver {
 	case "postgres":
 		return dsn.GetPostgres(), nil
@@ -62,6 +72,7 @@ func ConnectDB() error {
 		password:          viper.GetString("database.password"),
 		host:              viper.GetString("database.host"),
 		port:              viper.GetString("database.port"),
+		address:           viper.GetString("database.address"),
 		connectionOptions: viper.GetString("database.connectionOptions"),
 	}
 

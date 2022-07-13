@@ -1,6 +1,7 @@
 package config
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"os"
 )
@@ -18,5 +19,9 @@ func LoadConfig() error {
 		return err
 	}
 
+	// Check for deprecated fields
+	if viper.GetString("database.address") != "" {
+		log.Warningln("database.address is deprecated and will be removed in future releases, please use database.host, database.port and database.driver fields for database connectivity")
+	}
 	return nil
 }
