@@ -64,7 +64,7 @@ func (r *ShortcodeResolver) Request() (string, error) {
 }
 
 func (r *ShortcodeResolver) CreatedOn() (string, error) {
-	return r.shortcode.CreatedOn.String(), nil
+	return r.shortcode.CreatedAt.String(), nil
 }
 
 type ShortcodeArgs struct {
