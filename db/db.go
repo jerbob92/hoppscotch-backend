@@ -8,7 +8,6 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"time"
 )
 
 var DB *gorm.DB
@@ -37,8 +36,11 @@ func (dsn *DatabaseDSN) GetMysqlDSN() string {
 }
 
 func (dsn *DatabaseDSN) GetPostgresDSN() string {
-	PostgresConnectionOptions := "TimeZone=" + time.Now().Location().String()
-	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s %s %s", dsn.host, dsn.username, dsn.password, dsn.database, dsn.port, PostgresConnectionOptions, dsn.connectionOptions)
+	var PostgresConnectionOptions = "TimeZone=Europe/Amsterdam"
+	if dsn.connectionOptions != "" {
+		PostgresConnectionOptions = dsn.connectionOptions
+	}
+	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s %s", dsn.host, dsn.username, dsn.password, dsn.database, dsn.port, PostgresConnectionOptions)
 }
 
 func (dsn *DatabaseDSN) GetMysql() gorm.Dialector {
