@@ -1,3 +1,5 @@
+scalar Time
+
 type Shortcode {
   """
   The shortcode. 12 digit alphanumeric.
@@ -12,5 +14,5 @@ type Shortcode {
   """
   JSON string representing the request data
   """
-  createdOn: String!
+  createdOn: Time!
 }
