@@ -36,8 +36,11 @@ func (dsn *DatabaseDSN) GetMysqlDSN() string {
 }
 
 func (dsn *DatabaseDSN) GetPostgresDSN() string {
-	const PostgresConnectionOptions = "TimeZone=local"
-	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s %s %s", dsn.host, dsn.username, dsn.password, dsn.database, dsn.port, dsn.connectionOptions, PostgresConnectionOptions)
+	var PostgresConnectionOptions = "TimeZone=Europe/Amsterdam"
+	if dsn.connectionOptions != "" {
+		PostgresConnectionOptions = dsn.connectionOptions
+	}
+	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s %s", dsn.host, dsn.username, dsn.password, dsn.database, dsn.port, PostgresConnectionOptions)
 }
 
 func (dsn *DatabaseDSN) GetMysql() gorm.Dialector {

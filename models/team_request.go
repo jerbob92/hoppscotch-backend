@@ -8,6 +8,6 @@ type TeamRequest struct {
 	Team             Team
 	TeamCollectionID uint
 	TeamCollection   TeamCollection
-	Request          string `gorm:"type:MEDIUMTEXT"`
+	Request          string
 	Title            string
 }

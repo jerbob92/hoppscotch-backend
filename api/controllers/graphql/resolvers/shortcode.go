@@ -63,8 +63,8 @@ func (r *ShortcodeResolver) Request() (string, error) {
 	return r.shortcode.Request, nil
 }
 
-func (r *ShortcodeResolver) CreatedOn() (string, error) {
-	return r.shortcode.CreatedAt.String(), nil
+func (r *ShortcodeResolver) CreatedOn() (graphql.Time, error) {
+	return graphql.Time{Time: r.shortcode.CreatedAt}, nil
 }
 
 type ShortcodeArgs struct {
