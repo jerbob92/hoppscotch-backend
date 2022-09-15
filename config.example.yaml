@@ -14,7 +14,7 @@ allowed_domains: # This is to allow CORS to do it's magic.
   - "https://hoppscotch.io"
 frontend_domain: "https://hoppscotch.io" # This is to format mail links.
 firebase:
-  serviceAccountFile: "" # Path to Firebase SDK admin Service Account JSON file.
+  serviceAccountFile: "/etc/api-config/firebase-admin-sdk.json" # Path to Firebase SDK admin Service Account JSON file.
 smtp: # SMTP information to send invite mails.
   host: ""
   port: 587
