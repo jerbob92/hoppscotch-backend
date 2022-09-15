@@ -2,10 +2,7 @@ version: '3.1'
 
 services:
   backend:
-    build:
-      dockerfile: Dockerfile
-      context: .
-    image: hoppscotch-backend:latest
+    image: jerbob92/hoppscotch-backend:latest
     restart: always
     ports:
       - "8989:8989"
@@ -13,7 +10,7 @@ services:
       - mysql
     volumes:
       - ./tmp/config.yaml:/etc/api-config/config.yaml
-      - ./tmp/postcard.json:/usr/bin/postcard.json
+      - ./tmp/firebase-admin-sdk.json:/etc/api-config/firebase-admin-sdk.json
   mysql:
     image: mysql:8.0
     environment:
