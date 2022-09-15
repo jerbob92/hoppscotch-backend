@@ -76,12 +76,6 @@ use `/graphql/ws` for the Subscription/WebSocket traffic.
 
 ## Frontend deployment
 
-The default frontend requires some minor changes to connect to your backend since it's not made to connect to a custom
-backend.
+To connect to your own backend, you will need to set the `API_URL` and `API_WS_URL` to the correct URLs for your backend in `packages/hoppscotch-app/.env` when building the frontend. 
 
-You can see the required changes
-in [this commit](https://github.com/jerbob92/hoppscotch/commit/2c98d6f8471691156c99a4a3bdd37ab95286fb21). You can also
-use that branch to do your own deployment.
-
-Be aware that the backend needs to be running to build the frontend because it fetches the schema on build time.
-
+There is currently one minor bug in the latest version of Hoppscotch, it has the share URL hardcoded, I have fixed that in my own [fork](https://github.com/jerbob92/hoppscotch/tree/feature/local-hosting), but it's not always needed so I leave it up to you which version you use.
