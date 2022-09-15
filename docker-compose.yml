@@ -9,7 +9,9 @@ services:
     depends_on:
       - mysql
     volumes:
+      # Copy config.example.yaml to ./tmp/config.yaml and change the values
       - ./tmp/config.yaml:/etc/api-config/config.yaml
+      # Download Firebase admin sdk service account and save it as ./tmp/firebase-admin-sdk.json
       - ./tmp/firebase-admin-sdk.json:/etc/api-config/firebase-admin-sdk.json
   mysql:
     image: mysql:8.0
