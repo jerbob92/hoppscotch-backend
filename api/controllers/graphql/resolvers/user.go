@@ -3,6 +3,8 @@ package resolvers
 import (
 	"context"
 	"errors"
+	"sync"
+
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
 
@@ -82,6 +84,32 @@ func (b *BaseQuery) User(ctx context.Context, args *UserArgs) (*UserResolver, er
 	return NewUserResolver(c, existingUser)
 }
 
+type UserSubscription struct {
+	Lock        sync.Mutex
+	UserDeleted map[string]chan *UserResolver
+}
+
+type UserSubscriptions struct {
+	Subscriptions map[uint]*UserSubscription
+	Lock          sync.Mutex
+}
+
+func (t *UserSubscriptions) EnsureChannel(channel uint) {
+	t.Lock.Lock()
+	defer t.Lock.Unlock()
+	if _, ok := t.Subscriptions[channel]; !ok {
+		t.Subscriptions[channel] = &UserSubscription{
+			Lock:        sync.Mutex{},
+			UserDeleted: map[string]chan *UserResolver{},
+		}
+	}
+}
+
+var userSubscriptions = UserSubscriptions{
+	Subscriptions: map[uint]*UserSubscription{},
+	Lock:          sync.Mutex{},
+}
+
 func (b *BaseQuery) DeleteUser(ctx context.Context) (bool, error) {
 	c := b.GetReqC(ctx)
 	user, err := c.GetUser(ctx)
@@ -96,22 +124,20 @@ func (b *BaseQuery) DeleteUser(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	/*
-		resolver, err := NewUserResolver(c, user)
-		if err != nil {
-			return false, err
+	resolver, err := NewUserResolver(c, user)
+	if err != nil {
+		return false, err
+	}
+
+	go func() {
+		userSubscriptions.EnsureChannel(user.ID)
+
+		userSubscriptions.Subscriptions[user.ID].Lock.Lock()
+		defer userSubscriptions.Subscriptions[user.ID].Lock.Unlock()
+		for i := range userSubscriptions.Subscriptions[user.ID].UserDeleted {
+			userSubscriptions.Subscriptions[user.ID].UserDeleted[i] <- resolver
 		}
-
-		go func() {
-			teamSubscriptions.EnsureChannel(teamEnvironment.TeamID)
-
-			teamSubscriptions.Subscriptions[teamEnvironment.TeamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[teamEnvironment.TeamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[teamEnvironment.TeamID].TeamEnvironmentDeleted {
-				teamSubscriptions.Subscriptions[teamEnvironment.TeamID].TeamEnvironmentDeleted[i] <- resolver
-			}
-		}()*/
-	// @todo: sent subscription event.
+	}()
 
 	return true, nil
 }
@@ -119,14 +145,29 @@ func (b *BaseQuery) DeleteUser(ctx context.Context) (bool, error) {
 func (b *BaseQuery) UserDeleted(ctx context.Context) (<-chan *UserResolver, error) {
 	c := b.GetReqC(ctx)
 
-	_, err := c.GetUser(ctx)
+	user, err := c.GetUser(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	notificationChannel := make(chan *UserResolver)
+	userSubscriptions.EnsureChannel(user.ID)
 
-	// @todo: make notifications channel.
+	notificationChannel := make(chan *UserResolver)
+	subID := RandString(32)
+	userSubscriptions.Subscriptions[user.ID].Lock.Lock()
+	defer userSubscriptions.Subscriptions[user.ID].Lock.Unlock()
+	userSubscriptions.Subscriptions[user.ID].UserDeleted[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			userSubscriptions.Subscriptions[user.ID].Lock.Lock()
+			defer userSubscriptions.Subscriptions[user.ID].Lock.Unlock()
+			close(userSubscriptions.Subscriptions[user.ID].UserDeleted[subID])
+			delete(userSubscriptions.Subscriptions[user.ID].UserDeleted, subID)
+			return
+		}
+	}()
 
 	return notificationChannel, nil
 }
