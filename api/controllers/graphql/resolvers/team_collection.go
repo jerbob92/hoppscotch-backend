@@ -737,18 +737,21 @@ type SubscriptionArgs struct {
 }
 
 type Subscriptions struct {
-	Lock                  sync.Mutex
-	TeamCollectionAdded   map[string]chan *TeamCollectionResolver
-	TeamCollectionRemoved map[string]chan graphql.ID
-	TeamCollectionUpdated map[string]chan *TeamCollectionResolver
-	TeamInvitationAdded   map[string]chan *TeamInvitationResolver
-	TeamInvitationRemoved map[string]chan graphql.ID
-	TeamMemberAdded       map[string]chan *TeamMemberResolver
-	TeamMemberRemoved     map[string]chan graphql.ID
-	TeamMemberUpdated     map[string]chan *TeamMemberResolver
-	TeamRequestAdded      map[string]chan *TeamRequestResolver
-	TeamRequestDeleted    map[string]chan graphql.ID
-	TeamRequestUpdated    map[string]chan *TeamRequestResolver
+	Lock                   sync.Mutex
+	TeamCollectionAdded    map[string]chan *TeamCollectionResolver
+	TeamCollectionRemoved  map[string]chan graphql.ID
+	TeamCollectionUpdated  map[string]chan *TeamCollectionResolver
+	TeamInvitationAdded    map[string]chan *TeamInvitationResolver
+	TeamInvitationRemoved  map[string]chan graphql.ID
+	TeamMemberAdded        map[string]chan *TeamMemberResolver
+	TeamMemberRemoved      map[string]chan graphql.ID
+	TeamMemberUpdated      map[string]chan *TeamMemberResolver
+	TeamRequestAdded       map[string]chan *TeamRequestResolver
+	TeamRequestDeleted     map[string]chan graphql.ID
+	TeamRequestUpdated     map[string]chan *TeamRequestResolver
+	TeamEnvironmentCreated map[string]chan *TeamEnvironmentResolver
+	TeamEnvironmentDeleted map[string]chan *TeamEnvironmentResolver
+	TeamEnvironmentUpdated map[string]chan *TeamEnvironmentResolver
 }
 
 type TeamSubscriptions struct {
@@ -761,18 +764,21 @@ func (t *TeamSubscriptions) EnsureChannel(channel uint) {
 	defer t.Lock.Unlock()
 	if _, ok := t.Subscriptions[channel]; !ok {
 		t.Subscriptions[channel] = &Subscriptions{
-			Lock:                  sync.Mutex{},
-			TeamCollectionAdded:   map[string]chan *TeamCollectionResolver{},
-			TeamCollectionRemoved: map[string]chan graphql.ID{},
-			TeamCollectionUpdated: map[string]chan *TeamCollectionResolver{},
-			TeamInvitationAdded:   map[string]chan *TeamInvitationResolver{},
-			TeamInvitationRemoved: map[string]chan graphql.ID{},
-			TeamMemberAdded:       map[string]chan *TeamMemberResolver{},
-			TeamMemberRemoved:     map[string]chan graphql.ID{},
-			TeamMemberUpdated:     map[string]chan *TeamMemberResolver{},
-			TeamRequestAdded:      map[string]chan *TeamRequestResolver{},
-			TeamRequestDeleted:    map[string]chan graphql.ID{},
-			TeamRequestUpdated:    map[string]chan *TeamRequestResolver{},
+			Lock:                   sync.Mutex{},
+			TeamCollectionAdded:    map[string]chan *TeamCollectionResolver{},
+			TeamCollectionRemoved:  map[string]chan graphql.ID{},
+			TeamCollectionUpdated:  map[string]chan *TeamCollectionResolver{},
+			TeamInvitationAdded:    map[string]chan *TeamInvitationResolver{},
+			TeamInvitationRemoved:  map[string]chan graphql.ID{},
+			TeamMemberAdded:        map[string]chan *TeamMemberResolver{},
+			TeamMemberRemoved:      map[string]chan graphql.ID{},
+			TeamMemberUpdated:      map[string]chan *TeamMemberResolver{},
+			TeamRequestAdded:       map[string]chan *TeamRequestResolver{},
+			TeamRequestDeleted:     map[string]chan graphql.ID{},
+			TeamRequestUpdated:     map[string]chan *TeamRequestResolver{},
+			TeamEnvironmentCreated: map[string]chan *TeamEnvironmentResolver{},
+			TeamEnvironmentDeleted: map[string]chan *TeamEnvironmentResolver{},
+			TeamEnvironmentUpdated: map[string]chan *TeamEnvironmentResolver{},
 		}
 	}
 }
@@ -1149,6 +1155,108 @@ func (b *BaseQuery) TeamRequestUpdated(ctx context.Context, args *SubscriptionAr
 			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
 			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestUpdated[subID])
 			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestUpdated, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
+}
+
+func (b *BaseQuery) TeamEnvironmentCreated(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamEnvironmentResolver, error) {
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan *TeamEnvironmentResolver)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentCreated[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentCreated[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentCreated, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
+}
+
+func (b *BaseQuery) TeamEnvironmentDeleted(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamEnvironmentResolver, error) {
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan *TeamEnvironmentResolver)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentDeleted[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentDeleted[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentDeleted, subID)
+			return
+		}
+	}()
+
+	return notificationChannel, nil
+}
+
+func (b *BaseQuery) TeamEnvironmentUpdated(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamEnvironmentResolver, error) {
+	c := b.GetReqC(ctx)
+
+	userRole, err := getUserRoleInTeam(ctx, c, args.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if userRole == nil {
+		return nil, errors.New("no access to team")
+	}
+
+	teamID, _ := strconv.Atoi(string(args.TeamID))
+	teamSubscriptions.EnsureChannel(uint(teamID))
+
+	notificationChannel := make(chan *TeamEnvironmentResolver)
+	subID := RandString(32)
+	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+	teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentUpdated[subID] = notificationChannel
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
+			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentUpdated[subID])
+			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentUpdated, subID)
 			return
 		}
 	}()

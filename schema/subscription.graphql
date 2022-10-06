@@ -25,6 +25,21 @@ type Subscription {
   teamCollectionUpdated(teamID: ID!): TeamCollection!
 
   """
+  Listen for Team Environment Creation Messages
+  """
+  teamEnvironmentCreated(teamID: ID!): TeamEnvironment!
+
+  """
+  Listen for Team Environment Deletion Messages
+  """
+  teamEnvironmentDeleted(teamID: ID!): TeamEnvironment!
+
+  """
+  Listen for Team Environment Updates
+  """
+  teamEnvironmentUpdated(teamID: ID!): TeamEnvironment!
+
+  """
   Listen to when a collection has been removed
   """
   teamCollectionRemoved(teamID: ID!): ID!
@@ -38,6 +53,11 @@ type Subscription {
   Emitted when a request has been updated
   """
   teamRequestUpdated(teamID: ID!): TeamRequest!
+
+  """
+  Listen for user deletion
+  """
+  userDeleted(): User!
 
   """
   Emitted when a request has been deleted. Only the id of the request is emitted.
@@ -55,12 +75,12 @@ type Subscription {
   teamInvitationRemoved(teamID: ID!): ID!
 
   """
-  Listens to when a Shortcode is created
+  Listen for shortcode creation
   """
   myShortcodesCreated(): Shortcode!
 
   """
-  Listens to when a Shortcode is revoked
+  Listen for shortcode deletion
   """
   myShortcodesRevoked(): Shortcode!
 

@@ -5,6 +5,11 @@ type Mutation {
   createTeam(name: String!): Team!
 
   """
+  Create a new Team Environment for given Team ID
+  """
+  createTeamEnvironment(name: String!, teamID: ID!, variables: String!): TeamEnvironment!
+
+  """
   Leaves a team the executing user is a part of
   """
   leaveTeam(teamID: ID!): Boolean!
@@ -23,6 +28,16 @@ type Mutation {
   Deletes the team
   """
   deleteTeam(teamID: ID!): Boolean!
+
+  """
+  Delete a Team Environment for given Team ID
+  """
+  deleteTeamEnvironment(id: ID!): Boolean!
+
+  """
+  Delete an user account
+  """
+  deleteUser(): Boolean!
 
   """
   Adds a team member to the team via email
@@ -61,6 +76,11 @@ type Mutation {
   createChildCollection(childTitle: String!, collectionID: ID!): TeamCollection!
 
   """
+  Create a duplicate of an existing environment
+  """
+  createDuplicateEnvironment(id: ID!): TeamEnvironment!
+
+  """
   Rename a collection
   """
   renameCollection(collectionID: ID!, newTitle: String!): TeamCollection!
@@ -81,6 +101,11 @@ type Mutation {
   updateRequest(data: UpdateTeamRequestInput!, requestID: ID!): TeamRequest!
 
   """
+  Add/Edit a single environment variable or variables to a Team Environment
+  """
+  updateTeamEnvironment(id: ID!, name: String!, variables: String!): TeamEnvironment!
+
+  """
   Delete a request with the given ID
   """
   deleteRequest(requestID: ID!): Boolean!
@@ -94,6 +119,11 @@ type Mutation {
   Creates a Team Invitation
   """
   createTeamInvitation(inviteeEmail: String!, inviteeRole: TeamMemberRole!, teamID: ID!): TeamInvitation!
+
+  """
+  Delete all variables from a Team Environment
+  """
+  deleteAllVariablesFromTeamEnvironment(id: ID!): TeamEnvironment!
 
   """
   Revokes an invitation and deletes it
@@ -111,7 +141,7 @@ type Mutation {
   createShortcode(request: String!): Shortcode!
 
   """
-  Revoke a shortcode and deletes it
+  Revoke a user generated shortcode
   """
   revokeShortcode(code: ID!): Boolean!
 }

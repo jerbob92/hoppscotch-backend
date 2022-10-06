@@ -6,10 +6,11 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/graph-gophers/graphql-go"
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
 
+	"github.com/graph-gophers/graphql-go"
+	"github.com/sanae10001/graphql-go-extension-scalars"
 	"gorm.io/gorm"
 )
 
@@ -63,8 +64,8 @@ func (r *ShortcodeResolver) Request() (string, error) {
 	return r.shortcode.Request, nil
 }
 
-func (r *ShortcodeResolver) CreatedOn() (graphql.Time, error) {
-	return graphql.Time{Time: r.shortcode.CreatedAt}, nil
+func (r *ShortcodeResolver) CreatedOn() (scalars.DateTime, error) {
+	return *scalars.NewDateTime(r.shortcode.CreatedAt), nil
 }
 
 type ShortcodeArgs struct {

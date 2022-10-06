@@ -30,6 +30,11 @@ type Team {
   ownersCount: Int!
 
   """
+  Returns all Team Environments for the given Team
+  """
+  teamEnvironments: [TeamEnvironment!]!
+
+  """
   The number of users with the EDITOR role in the team
   """
   editorsCount: Int!

@@ -3,7 +3,6 @@ package resolvers
 import (
 	"context"
 	"errors"
-
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
 
@@ -81,4 +80,53 @@ func (b *BaseQuery) User(ctx context.Context, args *UserArgs) (*UserResolver, er
 	}
 
 	return NewUserResolver(c, existingUser)
+}
+
+func (b *BaseQuery) DeleteUser(ctx context.Context) (bool, error) {
+	c := b.GetReqC(ctx)
+	user, err := c.GetUser(ctx)
+	if err != nil {
+		c.LogErr(err)
+		return false, err
+	}
+
+	db := c.GetDB()
+	err = db.Delete(user).Error
+	if err != nil {
+		return false, err
+	}
+
+	/*
+		resolver, err := NewUserResolver(c, user)
+		if err != nil {
+			return false, err
+		}
+
+		go func() {
+			teamSubscriptions.EnsureChannel(teamEnvironment.TeamID)
+
+			teamSubscriptions.Subscriptions[teamEnvironment.TeamID].Lock.Lock()
+			defer teamSubscriptions.Subscriptions[teamEnvironment.TeamID].Lock.Unlock()
+			for i := range teamSubscriptions.Subscriptions[teamEnvironment.TeamID].TeamEnvironmentDeleted {
+				teamSubscriptions.Subscriptions[teamEnvironment.TeamID].TeamEnvironmentDeleted[i] <- resolver
+			}
+		}()*/
+	// @todo: sent subscription event.
+
+	return true, nil
+}
+
+func (b *BaseQuery) UserDeleted(ctx context.Context) (<-chan *UserResolver, error) {
+	c := b.GetReqC(ctx)
+
+	_, err := c.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	notificationChannel := make(chan *UserResolver)
+
+	// @todo: make notifications channel.
+
+	return notificationChannel, nil
 }

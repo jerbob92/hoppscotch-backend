@@ -161,6 +161,26 @@ func (r *TeamResolver) ViewersCount() (int32, error) {
 	return int32(ownerCount), nil
 }
 
+func (r *TeamResolver) TeamEnvironments() ([]*TeamEnvironmentResolver, error) {
+	environments := []*models.TeamEnvironment{}
+	db := r.c.GetDB()
+	err := db.Model(&models.TeamEnvironment{}).Where("team_id = ?", r.team.ID).Find(&environments).Error
+	if err != nil {
+		return nil, err
+	}
+
+	teamEnvironmentResolves := []*TeamEnvironmentResolver{}
+	for i := range environments {
+		newResolver, err := NewTeamEnvironmentResolver(r.c, environments[i])
+		if err != nil {
+			return nil, err
+		}
+		teamEnvironmentResolves = append(teamEnvironmentResolves, newResolver)
+	}
+
+	return teamEnvironmentResolves, nil
+}
+
 type MyTeamsArgs struct {
 	Cursor *graphql.ID
 }

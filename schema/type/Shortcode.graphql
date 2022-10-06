@@ -1,4 +1,4 @@
-scalar Time
+scalar DateTime
 
 type Shortcode {
   """
@@ -12,7 +12,7 @@ type Shortcode {
   request: String!
 
   """
-  JSON string representing the request data
+  Timestamp of when the Shortcode was created
   """
-  createdOn: Time!
+  createdOn: DateTime!
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/graph-gophers/graphql-go/introspection"
 	"github.com/graph-gophers/graphql-go/relay"
 	"github.com/graph-gophers/graphql-go/trace"
+	_ "github.com/sanae10001/graphql-go-extension-scalars"
 )
 
 var Handler *relay.Handler
@@ -34,6 +35,7 @@ func init() {
 		graphql.PanicHandler(PanicHandler{}),
 		graphql.Tracer(graphqlTracer{}),
 	)
+
 	Handler = &relay.Handler{Schema: parsedSchema}
 }
 

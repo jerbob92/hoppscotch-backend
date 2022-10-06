@@ -1,0 +1,21 @@
+type TeamEnvironment {
+  """
+  ID of the Team Environment
+  """
+  id: ID!
+
+  """
+  Name of the environment
+  """
+  name: String!
+
+  """
+  ID of the team this environment belongs to
+  """
+  teamID: ID!
+
+  """
+  All variables present in the environment
+  """
+  variables: String!
+}
