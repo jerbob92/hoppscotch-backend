@@ -10,7 +10,7 @@ var bus = EventBus.New()
 
 func subscribeUntilDone(ctx context.Context, topic string, eventHandler interface{}) error {
 	// Execute eventHandler for every message on topic.
-	err := bus.Subscribe(topic, eventHandler)
+	err := bus.SubscribeAsync(topic, eventHandler, false)
 	if err != nil {
 		return err
 	}
