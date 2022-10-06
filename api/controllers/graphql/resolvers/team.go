@@ -161,6 +161,26 @@ func (r *TeamResolver) ViewersCount() (int32, error) {
 	return int32(ownerCount), nil
 }
 
+func (r *TeamResolver) TeamEnvironments() ([]*TeamEnvironmentResolver, error) {
+	environments := []*models.TeamEnvironment{}
+	db := r.c.GetDB()
+	err := db.Model(&models.TeamEnvironment{}).Where("team_id = ?", r.team.ID).Find(&environments).Error
+	if err != nil {
+		return nil, err
+	}
+
+	teamEnvironmentResolves := []*TeamEnvironmentResolver{}
+	for i := range environments {
+		newResolver, err := NewTeamEnvironmentResolver(r.c, environments[i])
+		if err != nil {
+			return nil, err
+		}
+		teamEnvironmentResolves = append(teamEnvironmentResolves, newResolver)
+	}
+
+	return teamEnvironmentResolves, nil
+}
+
 type MyTeamsArgs struct {
 	Cursor *graphql.ID
 }
@@ -441,15 +461,7 @@ func (b *BaseQuery) LeaveTeam(ctx context.Context, args *LeaveTeamArgs) (bool, e
 		return false, err
 	}
 
-	go func() {
-		teamSubscriptions.EnsureChannel(existingTeamMember.TeamID)
-
-		teamSubscriptions.Subscriptions[existingTeamMember.TeamID].Lock.Lock()
-		defer teamSubscriptions.Subscriptions[existingTeamMember.TeamID].Lock.Unlock()
-		for i := range teamSubscriptions.Subscriptions[existingTeamMember.TeamID].TeamMemberRemoved {
-			teamSubscriptions.Subscriptions[existingTeamMember.TeamID].TeamMemberRemoved[i] <- graphql.ID(currentUser.FBUID)
-		}
-	}()
+	bus.Publish("team:"+strconv.Itoa(int(existingTeamMember.TeamID))+":members:removed", graphql.ID(currentUser.FBUID))
 
 	return true, nil
 }

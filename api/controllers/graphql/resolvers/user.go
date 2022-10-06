@@ -3,6 +3,7 @@ package resolvers
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
@@ -81,4 +82,49 @@ func (b *BaseQuery) User(ctx context.Context, args *UserArgs) (*UserResolver, er
 	}
 
 	return NewUserResolver(c, existingUser)
+}
+
+func (b *BaseQuery) DeleteUser(ctx context.Context) (bool, error) {
+	c := b.GetReqC(ctx)
+	user, err := c.GetUser(ctx)
+	if err != nil {
+		c.LogErr(err)
+		return false, err
+	}
+
+	db := c.GetDB()
+	err = db.Delete(user).Error
+	if err != nil {
+		return false, err
+	}
+
+	resolver, err := NewUserResolver(c, user)
+	if err != nil {
+		return false, err
+	}
+
+	bus.Publish("user:"+strconv.Itoa(int(user.ID))+":deleted", resolver)
+
+	return true, nil
+}
+
+func (b *BaseQuery) UserDeleted(ctx context.Context) (<-chan *UserResolver, error) {
+	c := b.GetReqC(ctx)
+
+	user, err := c.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	notificationChannel := make(chan *UserResolver)
+	eventHandler := func(resolver *UserResolver) {
+		notificationChannel <- resolver
+	}
+
+	err = subscribeUntilDone(ctx, "user:"+strconv.Itoa(int(user.ID))+":deleted", eventHandler)
+	if err != nil {
+		return nil, err
+	}
+
+	return notificationChannel, nil
 }

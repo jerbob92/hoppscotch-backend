@@ -156,15 +156,7 @@ func (b *BaseQuery) AcceptTeamInvitation(ctx context.Context, args *AcceptTeamIn
 		return nil, err
 	}
 
-	go func() {
-		teamSubscriptions.EnsureChannel(invite.TeamID)
-
-		teamSubscriptions.Subscriptions[invite.TeamID].Lock.Lock()
-		defer teamSubscriptions.Subscriptions[invite.TeamID].Lock.Unlock()
-		for i := range teamSubscriptions.Subscriptions[invite.TeamID].TeamMemberAdded {
-			teamSubscriptions.Subscriptions[invite.TeamID].TeamMemberAdded[i] <- resolver
-		}
-	}()
+	bus.Publish("team:"+strconv.Itoa(int(invite.TeamID))+":members:added", resolver)
 
 	return resolver, nil
 }
@@ -295,15 +287,7 @@ func (b *BaseQuery) CreateTeamInvitation(ctx context.Context, args *CreateTeamIn
 		return nil, err
 	}
 
-	go func() {
-		teamSubscriptions.EnsureChannel(invite.TeamID)
-
-		teamSubscriptions.Subscriptions[invite.TeamID].Lock.Lock()
-		defer teamSubscriptions.Subscriptions[invite.TeamID].Lock.Unlock()
-		for i := range teamSubscriptions.Subscriptions[invite.TeamID].TeamInvitationRemoved {
-			teamSubscriptions.Subscriptions[invite.TeamID].TeamInvitationAdded[i] <- resolver
-		}
-	}()
+	bus.Publish("team:"+strconv.Itoa(int(invite.TeamID))+":invitations:added", resolver)
 
 	return resolver, nil
 }
@@ -343,15 +327,7 @@ func (b *BaseQuery) RevokeTeamInvitation(ctx context.Context, args *RevokeTeamIn
 		return false, err
 	}
 
-	go func() {
-		teamSubscriptions.EnsureChannel(invite.TeamID)
-
-		teamSubscriptions.Subscriptions[invite.TeamID].Lock.Lock()
-		defer teamSubscriptions.Subscriptions[invite.TeamID].Lock.Unlock()
-		for i := range teamSubscriptions.Subscriptions[invite.TeamID].TeamInvitationRemoved {
-			teamSubscriptions.Subscriptions[invite.TeamID].TeamInvitationRemoved[i] <- graphql.ID(invite.Code)
-		}
-	}()
+	bus.Publish("team:"+strconv.Itoa(int(invite.TeamID))+":invitations:removed", graphql.ID(invite.Code))
 
 	return true, nil
 }

@@ -81,15 +81,7 @@ func (b *BaseQuery) RemoveTeamMember(ctx context.Context, args *RemoveTeamMember
 			return false, err
 		}
 
-		go func() {
-			teamSubscriptions.EnsureChannel(teamMember.TeamID)
-
-			teamSubscriptions.Subscriptions[teamMember.TeamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[teamMember.TeamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[teamMember.TeamID].TeamMemberRemoved {
-				teamSubscriptions.Subscriptions[teamMember.TeamID].TeamMemberRemoved[i] <- graphql.ID(existingUser.FBUID)
-			}
-		}()
+		bus.Publish("team:"+strconv.Itoa(int(teamMember.TeamID))+":members:removed", graphql.ID(existingUser.FBUID))
 
 		return true, nil
 	}
@@ -140,15 +132,7 @@ func (b *BaseQuery) UpdateTeamMemberRole(ctx context.Context, args *UpdateTeamMe
 			return nil, err
 		}
 
-		go func() {
-			teamSubscriptions.EnsureChannel(teamMember.TeamID)
-
-			teamSubscriptions.Subscriptions[teamMember.TeamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[teamMember.TeamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[teamMember.TeamID].TeamMemberUpdated {
-				teamSubscriptions.Subscriptions[teamMember.TeamID].TeamMemberUpdated[i] <- resolver
-			}
-		}()
+		bus.Publish("team:"+strconv.Itoa(int(teamMember.TeamID))+":members:updated", resolver)
 
 		return resolver, nil
 	}

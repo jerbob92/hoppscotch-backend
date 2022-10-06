@@ -4,10 +4,12 @@ go 1.18
 
 require (
 	firebase.google.com/go v3.13.0+incompatible
+	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.7
 	github.com/graph-gophers/graphql-go v1.3.0
 	github.com/graph-gophers/graphql-transport-ws v0.0.1
+	github.com/sanae10001/graphql-go-extension-scalars v0.0.0-20181112092257-e9ea23d1612d
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/viper v1.10.1
 	github.com/toorop/gin-logrus v0.0.0-20210225092905-2c785434f26f
