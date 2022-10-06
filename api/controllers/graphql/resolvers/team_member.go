@@ -81,7 +81,7 @@ func (b *BaseQuery) RemoveTeamMember(ctx context.Context, args *RemoveTeamMember
 			return false, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(teamMember.TeamID))+":members:removed", graphql.ID(existingUser.FBUID))
+		go bus.Publish("team:"+strconv.Itoa(int(teamMember.TeamID))+":members:removed", graphql.ID(existingUser.FBUID))
 
 		return true, nil
 	}
@@ -132,7 +132,7 @@ func (b *BaseQuery) UpdateTeamMemberRole(ctx context.Context, args *UpdateTeamMe
 			return nil, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(teamMember.TeamID))+":members:updated", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(teamMember.TeamID))+":members:updated", resolver)
 
 		return resolver, nil
 	}

@@ -103,7 +103,7 @@ func (b *BaseQuery) DeleteRequest(ctx context.Context, args *DeleteRequestArgs) 
 			return false, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(request.TeamID))+":requests:deleted", graphql.ID(strconv.Itoa(int(request.ID))))
+		go bus.Publish("team:"+strconv.Itoa(int(request.TeamID))+":requests:deleted", graphql.ID(strconv.Itoa(int(request.ID))))
 
 		return true, nil
 	}
@@ -176,10 +176,10 @@ func (b *BaseQuery) MoveRequest(ctx context.Context, args *MoveRequestArgs) (*Te
 		}
 
 		if teamChanged {
-			bus.Publish("team:"+strconv.Itoa(int(oldTeamID))+":requests:deleted", graphql.ID(strconv.Itoa(int(request.ID))))
-			bus.Publish("team:"+strconv.Itoa(int(newTeamID))+":requests:added", graphql.ID(strconv.Itoa(int(request.ID))))
+			go bus.Publish("team:"+strconv.Itoa(int(oldTeamID))+":requests:deleted", graphql.ID(strconv.Itoa(int(request.ID))))
+			go bus.Publish("team:"+strconv.Itoa(int(newTeamID))+":requests:added", graphql.ID(strconv.Itoa(int(request.ID))))
 		} else {
-			bus.Publish("team:"+strconv.Itoa(int(newTeamID))+":requests:updated", resolver)
+			go bus.Publish("team:"+strconv.Itoa(int(newTeamID))+":requests:updated", resolver)
 		}
 
 		return resolver, nil
@@ -236,7 +236,7 @@ func (b *BaseQuery) UpdateRequest(ctx context.Context, args *UpdateRequestArgs) 
 			return nil, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(request.TeamID))+":requests:updated", requestResolver)
+		go bus.Publish("team:"+strconv.Itoa(int(request.TeamID))+":requests:updated", requestResolver)
 
 		return requestResolver, nil
 	}

@@ -103,7 +103,7 @@ func (b *BaseQuery) DeleteUser(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	bus.Publish("user:"+strconv.Itoa(int(user.ID))+":deleted", resolver)
+	go bus.Publish("user:"+strconv.Itoa(int(user.ID))+":deleted", resolver)
 
 	return true, nil
 }

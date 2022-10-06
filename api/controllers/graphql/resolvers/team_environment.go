@@ -80,7 +80,7 @@ func (b *BaseQuery) CreateTeamEnvironment(ctx context.Context, args *CreateTeamE
 			return nil, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(teamID))+":environments:created", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(teamID))+":environments:created", resolver)
 
 		return resolver, nil
 	}
@@ -125,7 +125,7 @@ func (b *BaseQuery) DeleteTeamEnvironment(ctx context.Context, args *DeleteTeamE
 			return false, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(teamEnvironment.TeamID))+":environments:deleted", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(teamEnvironment.TeamID))+":environments:deleted", resolver)
 
 		return true, nil
 	}
@@ -175,7 +175,7 @@ func (b *BaseQuery) UpdateTeamEnvironment(ctx context.Context, args *UpdateTeamE
 			return nil, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(teamEnvironment.TeamID))+":environments:updated", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(teamEnvironment.TeamID))+":environments:updated", resolver)
 
 		return resolver, nil
 	}
@@ -222,7 +222,7 @@ func (b *BaseQuery) DeleteAllVariablesFromTeamEnvironment(ctx context.Context, a
 			return nil, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(teamEnvironment.TeamID))+":environments:updated", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(teamEnvironment.TeamID))+":environments:updated", resolver)
 
 		return resolver, nil
 	}
@@ -273,7 +273,7 @@ func (b *BaseQuery) CreateDuplicateEnvironment(ctx context.Context, args *Create
 			return nil, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(teamEnvironment.TeamID))+":environments:created", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(teamEnvironment.TeamID))+":environments:created", resolver)
 
 		return resolver, nil
 	}

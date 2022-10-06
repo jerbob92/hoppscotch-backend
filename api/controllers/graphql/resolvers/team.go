@@ -461,7 +461,7 @@ func (b *BaseQuery) LeaveTeam(ctx context.Context, args *LeaveTeamArgs) (bool, e
 		return false, err
 	}
 
-	bus.Publish("team:"+strconv.Itoa(int(existingTeamMember.TeamID))+":members:removed", graphql.ID(currentUser.FBUID))
+	go bus.Publish("team:"+strconv.Itoa(int(existingTeamMember.TeamID))+":members:removed", graphql.ID(currentUser.FBUID))
 
 	return true, nil
 }

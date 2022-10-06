@@ -331,7 +331,7 @@ func (b *BaseQuery) CreateChildCollection(ctx context.Context, args *CreateChild
 			return nil, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(newCollection.TeamID))+":collections:added", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(newCollection.TeamID))+":collections:added", resolver)
 
 		return resolver, nil
 	}
@@ -388,7 +388,7 @@ func (b *BaseQuery) CreateRequestInCollection(ctx context.Context, args *CreateR
 			return nil, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(newRequest.TeamID))+":requests:added", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(newRequest.TeamID))+":requests:added", resolver)
 
 		return resolver, nil
 	}
@@ -430,7 +430,7 @@ func (b *BaseQuery) CreateRootCollection(ctx context.Context, args *CreateRootCo
 			return nil, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(newCollection.TeamID))+":collections:added", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(newCollection.TeamID))+":collections:added", resolver)
 
 		return resolver, nil
 	}
@@ -469,7 +469,7 @@ func (b *BaseQuery) DeleteCollection(ctx context.Context, args *DeleteCollection
 			return false, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(collection.TeamID))+":collections:removed", graphql.ID(strconv.Itoa(int(collection.ID))))
+		go bus.Publish("team:"+strconv.Itoa(int(collection.TeamID))+":collections:removed", graphql.ID(strconv.Itoa(int(collection.ID))))
 
 		return true, nil
 	}
@@ -513,7 +513,7 @@ func importJSON(c *graphql_context.Context, teamID uint, parentID uint, folders 
 			return err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(teamID))+":collections:added", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(teamID))+":collections:added", resolver)
 
 		if folders[i].Requests != nil && len(folders[i].Requests) > 0 {
 			for ri := range folders[i].Requests {
@@ -546,7 +546,7 @@ func importJSON(c *graphql_context.Context, teamID uint, parentID uint, folders 
 					return err
 				}
 
-				bus.Publish("team:"+strconv.Itoa(int(teamID))+":requests:added", requestResolver)
+				go bus.Publish("team:"+strconv.Itoa(int(teamID))+":requests:added", requestResolver)
 			}
 		}
 
@@ -658,7 +658,7 @@ func (b *BaseQuery) RenameCollection(ctx context.Context, args *RenameCollection
 			return nil, err
 		}
 
-		bus.Publish("team:"+strconv.Itoa(int(collection.TeamID))+":collections:updated", resolver)
+		go bus.Publish("team:"+strconv.Itoa(int(collection.TeamID))+":collections:updated", resolver)
 
 		return NewTeamCollectionResolver(c, collection)
 	}

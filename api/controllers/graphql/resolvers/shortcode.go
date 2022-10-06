@@ -87,7 +87,7 @@ func (b *BaseQuery) CreateShortcode(ctx context.Context, args *CreateShortcodeAr
 		return nil, err
 	}
 
-	bus.Publish("user:"+strconv.Itoa(int(currentUser.ID))+":shortcodes:created", resolver)
+	go bus.Publish("user:"+strconv.Itoa(int(currentUser.ID))+":shortcodes:created", resolver)
 
 	return resolver, nil
 }
@@ -124,7 +124,7 @@ func (b *BaseQuery) RevokeShortcode(ctx context.Context, args *RevokeShortcodeAr
 		return false, err
 	}
 
-	bus.Publish("user:"+strconv.Itoa(int(currentUser.ID))+":shortcodes:revoked", resolver)
+	go bus.Publish("user:"+strconv.Itoa(int(currentUser.ID))+":shortcodes:revoked", resolver)
 
 	return true, nil
 }

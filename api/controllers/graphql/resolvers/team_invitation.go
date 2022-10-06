@@ -156,7 +156,7 @@ func (b *BaseQuery) AcceptTeamInvitation(ctx context.Context, args *AcceptTeamIn
 		return nil, err
 	}
 
-	bus.Publish("team:"+strconv.Itoa(int(invite.TeamID))+":members:added", resolver)
+	go bus.Publish("team:"+strconv.Itoa(int(invite.TeamID))+":members:added", resolver)
 
 	return resolver, nil
 }
@@ -287,7 +287,7 @@ func (b *BaseQuery) CreateTeamInvitation(ctx context.Context, args *CreateTeamIn
 		return nil, err
 	}
 
-	bus.Publish("team:"+strconv.Itoa(int(invite.TeamID))+":invitations:added", resolver)
+	go bus.Publish("team:"+strconv.Itoa(int(invite.TeamID))+":invitations:added", resolver)
 
 	return resolver, nil
 }
@@ -327,7 +327,7 @@ func (b *BaseQuery) RevokeTeamInvitation(ctx context.Context, args *RevokeTeamIn
 		return false, err
 	}
 
-	bus.Publish("team:"+strconv.Itoa(int(invite.TeamID))+":invitations:removed", graphql.ID(invite.Code))
+	go bus.Publish("team:"+strconv.Itoa(int(invite.TeamID))+":invitations:removed", graphql.ID(invite.Code))
 
 	return true, nil
 }
