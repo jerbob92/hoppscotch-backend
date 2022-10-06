@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"sync"
+	"strconv"
 
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
@@ -17,34 +17,6 @@ import (
 type ShortcodeResolver struct {
 	c         *graphql_context.Context
 	shortcode *models.Shortcode
-}
-
-type ShortcodeSubscriptions struct {
-	Lock                sync.Mutex
-	MyShortcodesCreated map[string]chan *ShortcodeResolver
-	MyShortcodesRevoked map[string]chan *ShortcodeResolver
-}
-
-type UserShortcodeSubscriptions struct {
-	Subscriptions map[uint]*ShortcodeSubscriptions
-	Lock          sync.Mutex
-}
-
-func (t *UserShortcodeSubscriptions) EnsureChannel(channel uint) {
-	t.Lock.Lock()
-	defer t.Lock.Unlock()
-	if _, ok := t.Subscriptions[channel]; !ok {
-		t.Subscriptions[channel] = &ShortcodeSubscriptions{
-			Lock:                sync.Mutex{},
-			MyShortcodesCreated: map[string]chan *ShortcodeResolver{},
-			MyShortcodesRevoked: map[string]chan *ShortcodeResolver{},
-		}
-	}
-}
-
-var userShortcodeSubscriptions = UserShortcodeSubscriptions{
-	Subscriptions: map[uint]*ShortcodeSubscriptions{},
-	Lock:          sync.Mutex{},
 }
 
 func NewShortcodeResolver(c *graphql_context.Context, shortcode *models.Shortcode) (*ShortcodeResolver, error) {
@@ -115,15 +87,7 @@ func (b *BaseQuery) CreateShortcode(ctx context.Context, args *CreateShortcodeAr
 		return nil, err
 	}
 
-	go func() {
-		userShortcodeSubscriptions.EnsureChannel(currentUser.ID)
-
-		userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
-		defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
-		for i := range userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated {
-			userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated[i] <- resolver
-		}
-	}()
+	bus.Publish("user:"+strconv.Itoa(int(currentUser.ID))+":shortcodes:created", resolver)
 
 	return resolver, nil
 }
@@ -160,15 +124,7 @@ func (b *BaseQuery) RevokeShortcode(ctx context.Context, args *RevokeShortcodeAr
 		return false, err
 	}
 
-	go func() {
-		userShortcodeSubscriptions.EnsureChannel(currentUser.ID)
-
-		userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
-		defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
-		for i := range userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated {
-			userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated[i] <- resolver
-		}
-	}()
+	bus.Publish("user:"+strconv.Itoa(int(currentUser.ID))+":shortcodes:revoked", resolver)
 
 	return true, nil
 }
@@ -214,24 +170,14 @@ func (b *BaseQuery) MyShortcodesCreated(ctx context.Context) (<-chan *ShortcodeR
 		return nil, err
 	}
 
-	userShortcodeSubscriptions.EnsureChannel(currentUser.ID)
-
 	notificationChannel := make(chan *ShortcodeResolver)
-	subID := RandString(32)
-	userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
-	defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
-	userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated[subID] = notificationChannel
-
-	go func() {
-		select {
-		case <-ctx.Done():
-			userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
-			defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
-			close(userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated[subID])
-			delete(userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesCreated, subID)
-			return
-		}
-	}()
+	eventHandler := func(resolver *ShortcodeResolver) {
+		notificationChannel <- resolver
+	}
+	err = subscribeUntilDone(ctx, "user:"+strconv.Itoa(int(currentUser.ID))+":shortcodes:created", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -243,24 +189,14 @@ func (b *BaseQuery) MyShortcodesRevoked(ctx context.Context) (<-chan *ShortcodeR
 		return nil, err
 	}
 
-	userShortcodeSubscriptions.EnsureChannel(currentUser.ID)
-
 	notificationChannel := make(chan *ShortcodeResolver)
-	subID := RandString(32)
-	userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
-	defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
-	userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesRevoked[subID] = notificationChannel
-
-	go func() {
-		select {
-		case <-ctx.Done():
-			userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Lock()
-			defer userShortcodeSubscriptions.Subscriptions[currentUser.ID].Lock.Unlock()
-			close(userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesRevoked[subID])
-			delete(userShortcodeSubscriptions.Subscriptions[currentUser.ID].MyShortcodesRevoked, subID)
-			return
-		}
-	}()
+	eventHandler := func(resolver *ShortcodeResolver) {
+		notificationChannel <- resolver
+	}
+	err = subscribeUntilDone(ctx, "user:"+strconv.Itoa(int(currentUser.ID))+":shortcodes:revoked", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }

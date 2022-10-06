@@ -461,15 +461,7 @@ func (b *BaseQuery) LeaveTeam(ctx context.Context, args *LeaveTeamArgs) (bool, e
 		return false, err
 	}
 
-	go func() {
-		teamSubscriptions.EnsureChannel(existingTeamMember.TeamID)
-
-		teamSubscriptions.Subscriptions[existingTeamMember.TeamID].Lock.Lock()
-		defer teamSubscriptions.Subscriptions[existingTeamMember.TeamID].Lock.Unlock()
-		for i := range teamSubscriptions.Subscriptions[existingTeamMember.TeamID].TeamMemberRemoved {
-			teamSubscriptions.Subscriptions[existingTeamMember.TeamID].TeamMemberRemoved[i] <- graphql.ID(currentUser.FBUID)
-		}
-	}()
+	bus.Publish("team:"+strconv.Itoa(int(existingTeamMember.TeamID))+":members:removed", graphql.ID(currentUser.FBUID))
 
 	return true, nil
 }

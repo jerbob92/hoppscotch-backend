@@ -3,7 +3,7 @@ package resolvers
 import (
 	"context"
 	"errors"
-	"sync"
+	"strconv"
 
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
@@ -84,32 +84,6 @@ func (b *BaseQuery) User(ctx context.Context, args *UserArgs) (*UserResolver, er
 	return NewUserResolver(c, existingUser)
 }
 
-type UserSubscription struct {
-	Lock        sync.Mutex
-	UserDeleted map[string]chan *UserResolver
-}
-
-type UserSubscriptions struct {
-	Subscriptions map[uint]*UserSubscription
-	Lock          sync.Mutex
-}
-
-func (t *UserSubscriptions) EnsureChannel(channel uint) {
-	t.Lock.Lock()
-	defer t.Lock.Unlock()
-	if _, ok := t.Subscriptions[channel]; !ok {
-		t.Subscriptions[channel] = &UserSubscription{
-			Lock:        sync.Mutex{},
-			UserDeleted: map[string]chan *UserResolver{},
-		}
-	}
-}
-
-var userSubscriptions = UserSubscriptions{
-	Subscriptions: map[uint]*UserSubscription{},
-	Lock:          sync.Mutex{},
-}
-
 func (b *BaseQuery) DeleteUser(ctx context.Context) (bool, error) {
 	c := b.GetReqC(ctx)
 	user, err := c.GetUser(ctx)
@@ -129,15 +103,7 @@ func (b *BaseQuery) DeleteUser(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	go func() {
-		userSubscriptions.EnsureChannel(user.ID)
-
-		userSubscriptions.Subscriptions[user.ID].Lock.Lock()
-		defer userSubscriptions.Subscriptions[user.ID].Lock.Unlock()
-		for i := range userSubscriptions.Subscriptions[user.ID].UserDeleted {
-			userSubscriptions.Subscriptions[user.ID].UserDeleted[i] <- resolver
-		}
-	}()
+	bus.Publish("user:"+strconv.Itoa(int(user.ID))+":deleted", resolver)
 
 	return true, nil
 }
@@ -150,24 +116,15 @@ func (b *BaseQuery) UserDeleted(ctx context.Context) (<-chan *UserResolver, erro
 		return nil, err
 	}
 
-	userSubscriptions.EnsureChannel(user.ID)
-
 	notificationChannel := make(chan *UserResolver)
-	subID := RandString(32)
-	userSubscriptions.Subscriptions[user.ID].Lock.Lock()
-	defer userSubscriptions.Subscriptions[user.ID].Lock.Unlock()
-	userSubscriptions.Subscriptions[user.ID].UserDeleted[subID] = notificationChannel
+	eventHandler := func(resolver *UserResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			userSubscriptions.Subscriptions[user.ID].Lock.Lock()
-			defer userSubscriptions.Subscriptions[user.ID].Lock.Unlock()
-			close(userSubscriptions.Subscriptions[user.ID].UserDeleted[subID])
-			delete(userSubscriptions.Subscriptions[user.ID].UserDeleted, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "user:"+strconv.Itoa(int(user.ID))+":deleted", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }

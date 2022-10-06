@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log"
 	"strconv"
-	"sync"
 
 	graphql_context "github.com/jerbob92/hoppscotch-backend/api/controllers/graphql/context"
 	"github.com/jerbob92/hoppscotch-backend/models"
@@ -332,15 +331,7 @@ func (b *BaseQuery) CreateChildCollection(ctx context.Context, args *CreateChild
 			return nil, err
 		}
 
-		go func() {
-			teamSubscriptions.EnsureChannel(newCollection.TeamID)
-
-			teamSubscriptions.Subscriptions[newCollection.TeamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[newCollection.TeamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[newCollection.TeamID].TeamCollectionAdded {
-				teamSubscriptions.Subscriptions[newCollection.TeamID].TeamCollectionAdded[i] <- resolver
-			}
-		}()
+		bus.Publish("team:"+strconv.Itoa(int(newCollection.TeamID))+":collections:added", resolver)
 
 		return resolver, nil
 	}
@@ -397,15 +388,7 @@ func (b *BaseQuery) CreateRequestInCollection(ctx context.Context, args *CreateR
 			return nil, err
 		}
 
-		go func() {
-			teamSubscriptions.EnsureChannel(newRequest.TeamID)
-
-			teamSubscriptions.Subscriptions[newRequest.TeamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[newRequest.TeamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[newRequest.TeamID].TeamRequestAdded {
-				teamSubscriptions.Subscriptions[newRequest.TeamID].TeamRequestAdded[i] <- resolver
-			}
-		}()
+		bus.Publish("team:"+strconv.Itoa(int(newRequest.TeamID))+":requests:added", resolver)
 
 		return resolver, nil
 	}
@@ -447,15 +430,7 @@ func (b *BaseQuery) CreateRootCollection(ctx context.Context, args *CreateRootCo
 			return nil, err
 		}
 
-		go func() {
-			teamSubscriptions.EnsureChannel(newCollection.TeamID)
-
-			teamSubscriptions.Subscriptions[newCollection.TeamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[newCollection.TeamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[newCollection.TeamID].TeamCollectionAdded {
-				teamSubscriptions.Subscriptions[newCollection.TeamID].TeamCollectionAdded[i] <- resolver
-			}
-		}()
+		bus.Publish("team:"+strconv.Itoa(int(newCollection.TeamID))+":collections:added", resolver)
 
 		return resolver, nil
 	}
@@ -494,15 +469,7 @@ func (b *BaseQuery) DeleteCollection(ctx context.Context, args *DeleteCollection
 			return false, err
 		}
 
-		go func() {
-			teamSubscriptions.EnsureChannel(collection.TeamID)
-
-			teamSubscriptions.Subscriptions[collection.TeamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[collection.TeamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[collection.TeamID].TeamCollectionRemoved {
-				teamSubscriptions.Subscriptions[collection.TeamID].TeamCollectionRemoved[i] <- graphql.ID(strconv.Itoa(int(collection.ID)))
-			}
-		}()
+		bus.Publish("team:"+strconv.Itoa(int(collection.TeamID))+":collections:removed", graphql.ID(strconv.Itoa(int(collection.ID))))
 
 		return true, nil
 	}
@@ -545,15 +512,8 @@ func importJSON(c *graphql_context.Context, teamID uint, parentID uint, folders 
 		if err != nil {
 			return err
 		}
-		go func() {
-			teamSubscriptions.EnsureChannel(teamID)
 
-			teamSubscriptions.Subscriptions[teamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[teamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[teamID].TeamCollectionAdded {
-				teamSubscriptions.Subscriptions[teamID].TeamCollectionAdded[i] <- resolver
-			}
-		}()
+		bus.Publish("team:"+strconv.Itoa(int(teamID))+":collections:added", resolver)
 
 		if folders[i].Requests != nil && len(folders[i].Requests) > 0 {
 			for ri := range folders[i].Requests {
@@ -585,15 +545,8 @@ func importJSON(c *graphql_context.Context, teamID uint, parentID uint, folders 
 				if err != nil {
 					return err
 				}
-				go func() {
-					teamSubscriptions.EnsureChannel(teamID)
 
-					teamSubscriptions.Subscriptions[teamID].Lock.Lock()
-					defer teamSubscriptions.Subscriptions[teamID].Lock.Unlock()
-					for i := range teamSubscriptions.Subscriptions[teamID].TeamRequestAdded {
-						teamSubscriptions.Subscriptions[teamID].TeamRequestAdded[i] <- requestResolver
-					}
-				}()
+				bus.Publish("team:"+strconv.Itoa(int(teamID))+":requests:added", requestResolver)
 			}
 		}
 
@@ -705,15 +658,7 @@ func (b *BaseQuery) RenameCollection(ctx context.Context, args *RenameCollection
 			return nil, err
 		}
 
-		go func() {
-			teamSubscriptions.EnsureChannel(collection.TeamID)
-
-			teamSubscriptions.Subscriptions[collection.TeamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[collection.TeamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[collection.TeamID].TeamCollectionUpdated {
-				teamSubscriptions.Subscriptions[collection.TeamID].TeamCollectionUpdated[i] <- resolver
-			}
-		}()
+		bus.Publish("team:"+strconv.Itoa(int(collection.TeamID))+":collections:updated", resolver)
 
 		return NewTeamCollectionResolver(c, collection)
 	}
@@ -736,58 +681,6 @@ type SubscriptionArgs struct {
 	TeamID graphql.ID
 }
 
-type Subscriptions struct {
-	Lock                   sync.Mutex
-	TeamCollectionAdded    map[string]chan *TeamCollectionResolver
-	TeamCollectionRemoved  map[string]chan graphql.ID
-	TeamCollectionUpdated  map[string]chan *TeamCollectionResolver
-	TeamInvitationAdded    map[string]chan *TeamInvitationResolver
-	TeamInvitationRemoved  map[string]chan graphql.ID
-	TeamMemberAdded        map[string]chan *TeamMemberResolver
-	TeamMemberRemoved      map[string]chan graphql.ID
-	TeamMemberUpdated      map[string]chan *TeamMemberResolver
-	TeamRequestAdded       map[string]chan *TeamRequestResolver
-	TeamRequestDeleted     map[string]chan graphql.ID
-	TeamRequestUpdated     map[string]chan *TeamRequestResolver
-	TeamEnvironmentCreated map[string]chan *TeamEnvironmentResolver
-	TeamEnvironmentDeleted map[string]chan *TeamEnvironmentResolver
-	TeamEnvironmentUpdated map[string]chan *TeamEnvironmentResolver
-}
-
-type TeamSubscriptions struct {
-	Subscriptions map[uint]*Subscriptions
-	Lock          sync.Mutex
-}
-
-func (t *TeamSubscriptions) EnsureChannel(channel uint) {
-	t.Lock.Lock()
-	defer t.Lock.Unlock()
-	if _, ok := t.Subscriptions[channel]; !ok {
-		t.Subscriptions[channel] = &Subscriptions{
-			Lock:                   sync.Mutex{},
-			TeamCollectionAdded:    map[string]chan *TeamCollectionResolver{},
-			TeamCollectionRemoved:  map[string]chan graphql.ID{},
-			TeamCollectionUpdated:  map[string]chan *TeamCollectionResolver{},
-			TeamInvitationAdded:    map[string]chan *TeamInvitationResolver{},
-			TeamInvitationRemoved:  map[string]chan graphql.ID{},
-			TeamMemberAdded:        map[string]chan *TeamMemberResolver{},
-			TeamMemberRemoved:      map[string]chan graphql.ID{},
-			TeamMemberUpdated:      map[string]chan *TeamMemberResolver{},
-			TeamRequestAdded:       map[string]chan *TeamRequestResolver{},
-			TeamRequestDeleted:     map[string]chan graphql.ID{},
-			TeamRequestUpdated:     map[string]chan *TeamRequestResolver{},
-			TeamEnvironmentCreated: map[string]chan *TeamEnvironmentResolver{},
-			TeamEnvironmentDeleted: map[string]chan *TeamEnvironmentResolver{},
-			TeamEnvironmentUpdated: map[string]chan *TeamEnvironmentResolver{},
-		}
-	}
-}
-
-var teamSubscriptions = TeamSubscriptions{
-	Subscriptions: map[uint]*Subscriptions{},
-	Lock:          sync.Mutex{},
-}
-
 func (b *BaseQuery) TeamCollectionAdded(ctx context.Context, args *SubscriptionArgs) (<-chan *TeamCollectionResolver, error) {
 	c := b.GetReqC(ctx)
 
@@ -800,24 +693,15 @@ func (b *BaseQuery) TeamCollectionAdded(ctx context.Context, args *SubscriptionA
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan *TeamCollectionResolver)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionAdded[subID] = notificationChannel
+	eventHandler := func(resolver *TeamCollectionResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionAdded[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionAdded, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":collections:added", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -834,24 +718,15 @@ func (b *BaseQuery) TeamCollectionRemoved(ctx context.Context, args *Subscriptio
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan graphql.ID)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionRemoved[subID] = notificationChannel
+	eventHandler := func(resolver graphql.ID) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionRemoved[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionRemoved, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":collections:removed", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -868,24 +743,15 @@ func (b *BaseQuery) TeamCollectionUpdated(ctx context.Context, args *Subscriptio
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan *TeamCollectionResolver)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionUpdated[subID] = notificationChannel
+	eventHandler := func(resolver *TeamCollectionResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionUpdated[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamCollectionUpdated, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":collections:updated", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -902,24 +768,15 @@ func (b *BaseQuery) TeamInvitationAdded(ctx context.Context, args *SubscriptionA
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan *TeamInvitationResolver)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationAdded[subID] = notificationChannel
+	eventHandler := func(resolver *TeamInvitationResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationAdded[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationAdded, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":invitations:added", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -936,24 +793,15 @@ func (b *BaseQuery) TeamInvitationRemoved(ctx context.Context, args *Subscriptio
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan graphql.ID)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationRemoved[subID] = notificationChannel
+	eventHandler := func(resolver graphql.ID) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationRemoved[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamInvitationRemoved, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":invitations:removed", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -970,24 +818,15 @@ func (b *BaseQuery) TeamMemberAdded(ctx context.Context, args *SubscriptionArgs)
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan *TeamMemberResolver)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberAdded[subID] = notificationChannel
+	eventHandler := func(resolver *TeamMemberResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberAdded[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberAdded, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":members:added", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -1004,24 +843,15 @@ func (b *BaseQuery) TeamMemberRemoved(ctx context.Context, args *SubscriptionArg
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan graphql.ID)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberRemoved[subID] = notificationChannel
+	eventHandler := func(resolver graphql.ID) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberRemoved[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberRemoved, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":members:removed", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -1038,24 +868,15 @@ func (b *BaseQuery) TeamMemberUpdated(ctx context.Context, args *SubscriptionArg
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan *TeamMemberResolver)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberUpdated[subID] = notificationChannel
+	eventHandler := func(resolver *TeamMemberResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberUpdated[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamMemberUpdated, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":members:updated", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -1072,24 +893,15 @@ func (b *BaseQuery) TeamRequestAdded(ctx context.Context, args *SubscriptionArgs
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan *TeamRequestResolver)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestAdded[subID] = notificationChannel
+	eventHandler := func(resolver *TeamRequestResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestAdded[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestAdded, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":requests:added", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -1106,24 +918,15 @@ func (b *BaseQuery) TeamRequestDeleted(ctx context.Context, args *SubscriptionAr
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan graphql.ID)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestDeleted[subID] = notificationChannel
+	eventHandler := func(resolver graphql.ID) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestDeleted[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestDeleted, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":requests:deleted", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -1140,24 +943,15 @@ func (b *BaseQuery) TeamRequestUpdated(ctx context.Context, args *SubscriptionAr
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan *TeamRequestResolver)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestUpdated[subID] = notificationChannel
+	eventHandler := func(resolver *TeamRequestResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestUpdated[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamRequestUpdated, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":requests:updated", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -1174,24 +968,15 @@ func (b *BaseQuery) TeamEnvironmentCreated(ctx context.Context, args *Subscripti
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan *TeamEnvironmentResolver)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentCreated[subID] = notificationChannel
+	eventHandler := func(resolver *TeamEnvironmentResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentCreated[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentCreated, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":environments:created", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -1208,24 +993,15 @@ func (b *BaseQuery) TeamEnvironmentDeleted(ctx context.Context, args *Subscripti
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan *TeamEnvironmentResolver)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentDeleted[subID] = notificationChannel
+	eventHandler := func(resolver *TeamEnvironmentResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentDeleted[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentDeleted, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":environments:deleted", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }
@@ -1242,24 +1018,15 @@ func (b *BaseQuery) TeamEnvironmentUpdated(ctx context.Context, args *Subscripti
 	}
 
 	teamID, _ := strconv.Atoi(string(args.TeamID))
-	teamSubscriptions.EnsureChannel(uint(teamID))
-
 	notificationChannel := make(chan *TeamEnvironmentResolver)
-	subID := RandString(32)
-	teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-	defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-	teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentUpdated[subID] = notificationChannel
+	eventHandler := func(resolver *TeamEnvironmentResolver) {
+		notificationChannel <- resolver
+	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			teamSubscriptions.Subscriptions[uint(teamID)].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[uint(teamID)].Lock.Unlock()
-			close(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentUpdated[subID])
-			delete(teamSubscriptions.Subscriptions[uint(teamID)].TeamEnvironmentUpdated, subID)
-			return
-		}
-	}()
+	err = subscribeUntilDone(ctx, "team:"+strconv.Itoa(teamID)+":environments:updated", eventHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	return notificationChannel, nil
 }

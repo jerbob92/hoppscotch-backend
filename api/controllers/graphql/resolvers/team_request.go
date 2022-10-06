@@ -103,15 +103,7 @@ func (b *BaseQuery) DeleteRequest(ctx context.Context, args *DeleteRequestArgs) 
 			return false, err
 		}
 
-		go func() {
-			teamSubscriptions.EnsureChannel(request.TeamID)
-
-			teamSubscriptions.Subscriptions[request.TeamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[request.TeamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[request.TeamID].TeamRequestDeleted {
-				teamSubscriptions.Subscriptions[request.TeamID].TeamRequestDeleted[i] <- graphql.ID(strconv.Itoa(int(request.ID)))
-			}
-		}()
+		bus.Publish("team:"+strconv.Itoa(int(request.TeamID))+":requests:deleted", graphql.ID(strconv.Itoa(int(request.ID))))
 
 		return true, nil
 	}
@@ -184,35 +176,10 @@ func (b *BaseQuery) MoveRequest(ctx context.Context, args *MoveRequestArgs) (*Te
 		}
 
 		if teamChanged {
-			go func() {
-				teamSubscriptions.EnsureChannel(oldTeamID)
-
-				teamSubscriptions.Subscriptions[oldTeamID].Lock.Lock()
-				defer teamSubscriptions.Subscriptions[oldTeamID].Lock.Unlock()
-				for i := range teamSubscriptions.Subscriptions[oldTeamID].TeamRequestDeleted {
-					teamSubscriptions.Subscriptions[oldTeamID].TeamRequestDeleted[i] <- graphql.ID(strconv.Itoa(int(request.ID)))
-				}
-			}()
-
-			go func() {
-				teamSubscriptions.EnsureChannel(newTeamID)
-
-				teamSubscriptions.Subscriptions[newTeamID].Lock.Lock()
-				defer teamSubscriptions.Subscriptions[newTeamID].Lock.Unlock()
-				for i := range teamSubscriptions.Subscriptions[newTeamID].TeamRequestAdded {
-					teamSubscriptions.Subscriptions[newTeamID].TeamRequestAdded[i] <- resolver
-				}
-			}()
+			bus.Publish("team:"+strconv.Itoa(int(oldTeamID))+":requests:deleted", graphql.ID(strconv.Itoa(int(request.ID))))
+			bus.Publish("team:"+strconv.Itoa(int(newTeamID))+":requests:added", graphql.ID(strconv.Itoa(int(request.ID))))
 		} else {
-			go func() {
-				teamSubscriptions.EnsureChannel(newTeamID)
-
-				teamSubscriptions.Subscriptions[newTeamID].Lock.Lock()
-				defer teamSubscriptions.Subscriptions[newTeamID].Lock.Unlock()
-				for i := range teamSubscriptions.Subscriptions[newTeamID].TeamRequestUpdated {
-					teamSubscriptions.Subscriptions[newTeamID].TeamRequestUpdated[i] <- resolver
-				}
-			}()
+			bus.Publish("team:"+strconv.Itoa(int(newTeamID))+":requests:updated", resolver)
 		}
 
 		return resolver, nil
@@ -269,15 +236,7 @@ func (b *BaseQuery) UpdateRequest(ctx context.Context, args *UpdateRequestArgs) 
 			return nil, err
 		}
 
-		go func() {
-			teamSubscriptions.EnsureChannel(request.TeamID)
-
-			teamSubscriptions.Subscriptions[request.TeamID].Lock.Lock()
-			defer teamSubscriptions.Subscriptions[request.TeamID].Lock.Unlock()
-			for i := range teamSubscriptions.Subscriptions[request.TeamID].TeamRequestUpdated {
-				teamSubscriptions.Subscriptions[request.TeamID].TeamRequestUpdated[i] <- requestResolver
-			}
-		}()
+		bus.Publish("team:"+strconv.Itoa(int(request.TeamID))+":requests:updated", requestResolver)
 
 		return requestResolver, nil
 	}
