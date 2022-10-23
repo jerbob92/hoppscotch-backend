@@ -2,6 +2,10 @@ api:
   port: "8989"
   # development/production/test
   environment: "development"
+  ssl:
+    enabled: false
+    certificate: "path/to/certificate.pem"
+    key: "path/to/key.pem"
 database:
   username: "hoppscotch"
   password: "hoppscotch"

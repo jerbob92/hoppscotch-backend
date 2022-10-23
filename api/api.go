@@ -55,5 +55,9 @@ func StartAPI() error {
 		return err
 	}
 
+	if viper.GetBool("api.ssl.enabled") {
+		return r.RunTLS(":"+viper.GetString("api.port"), viper.GetString("api.ssl.certificate"), viper.GetString("api.ssl.key"))
+	}
+
 	return r.Run(":" + viper.GetString("api.port"))
 }
