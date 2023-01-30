@@ -17,7 +17,15 @@ require (
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 	gorm.io/driver/mysql v1.4.3
 	gorm.io/driver/postgres v1.4.5
+	gorm.io/driver/sqlserver v1.4.2
+
 	gorm.io/gorm v1.24.1-0.20221019064659-5dd2bb482755
+)
+
+require (
+	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
+	github.com/golang-sql/sqlexp v0.1.0 // indirect
+	github.com/microsoft/go-mssqldb v0.19.0 // indirect
 )
 
 require (
@@ -84,4 +92,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gorm.io/driver/sqlserver v1.4.2
 )

@@ -3,10 +3,12 @@ package db
 import (
 	"errors"
 	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
 )
 
@@ -43,12 +45,25 @@ func (dsn *DatabaseDSN) GetPostgresDSN() string {
 	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s %s", dsn.host, dsn.username, dsn.password, dsn.database, dsn.port, PostgresConnectionOptions)
 }
 
+func (dsn *DatabaseDSN) GetMSSQLDSN() string {
+
+	var MSSQLConnectionOptions = ""
+	if dsn.connectionOptions != "" {
+		MSSQLConnectionOptions += "?" + dsn.connectionOptions
+	}
+	return fmt.Sprintf("sqlserver://%s:%s@%s:%s?database=%s%s", dsn.username, dsn.password, dsn.host, dsn.port, dsn.database, MSSQLConnectionOptions)
+}
+
 func (dsn *DatabaseDSN) GetMysql() gorm.Dialector {
 	return mysql.Open(dsn.GetMysqlDSN())
 }
 
 func (dsn *DatabaseDSN) GetPostgres() gorm.Dialector {
 	return postgres.Open(dsn.GetPostgresDSN())
+}
+
+func (dsn *DatabaseDSN) GetMSSQL() gorm.Dialector {
+	return sqlserver.Open(dsn.GetMSSQLDSN())
 }
 
 func (dsn *DatabaseDSN) GetDialector() (gorm.Dialector, error) {
@@ -62,6 +77,8 @@ func (dsn *DatabaseDSN) GetDialector() (gorm.Dialector, error) {
 		return dsn.GetPostgres(), nil
 	case "mysql":
 		return dsn.GetMysql(), nil
+	case "mssql":
+		return dsn.GetMSSQL(), nil
 	default:
 		return nil, errors.New("invalid driver")
 	}
