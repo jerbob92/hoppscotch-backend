@@ -45,13 +45,13 @@ func (dsn *DatabaseDSN) GetPostgresDSN() string {
 	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s %s", dsn.host, dsn.username, dsn.password, dsn.database, dsn.port, PostgresConnectionOptions)
 }
 
-func (dsn *DatabaseDSN) GetMSSqlDSN() string {
+func (dsn *DatabaseDSN) GetMSSQLDSN() string {
 
-	var MSSqlConnectionOptions = ""
+	var MSSQLConnectionOptions = ""
 	if dsn.connectionOptions != "" {
-		MSSqlConnectionOptions += "?" + dsn.connectionOptions
+		MSSQLConnectionOptions += "?" + dsn.connectionOptions
 	}
-	return fmt.Sprintf("sqlserver://%s:%s@%s:%s?database=%s%s", dsn.username, dsn.password, dsn.host, dsn.port, dsn.database, MSSqlConnectionOptions)
+	return fmt.Sprintf("sqlserver://%s:%s@%s:%s?database=%s%s", dsn.username, dsn.password, dsn.host, dsn.port, dsn.database, MSSQLConnectionOptions)
 }
 
 func (dsn *DatabaseDSN) GetMysql() gorm.Dialector {
@@ -63,7 +63,7 @@ func (dsn *DatabaseDSN) GetPostgres() gorm.Dialector {
 }
 
 func (dsn *DatabaseDSN) GetMSSQL() gorm.Dialector {
-	return sqlserver.Open(dsn.GetMSSqlDSN())
+	return sqlserver.Open(dsn.GetMSSQLDSN())
 }
 
 func (dsn *DatabaseDSN) GetDialector() (gorm.Dialector, error) {
