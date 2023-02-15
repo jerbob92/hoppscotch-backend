@@ -176,6 +176,18 @@ func (c *Context) GetUser(ctx context.Context) (*models.User, error) {
 		return nil, err
 	}
 
+	// Overwrite email when there is a difference between db and JWT claims.
+	// This might be the case when the profile has been updated or when the
+	// email address have been verified.
+	email, ok := token.Claims["email"].(string)
+	if ok && email != "" && existingUser.Email != email {
+		existingUser.Email = email
+		err = db.Save(existingUser).Error
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	c.ReqUser = existingUser
 
 	return existingUser, nil
